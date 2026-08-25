@@ -28,7 +28,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     // Increment click counter
     await admin
       .from('shared_links')
-      .update({ clicks: link.clicks + 1, last_clicked_at: new Date().toISOString() })
+      .update({ clicks: (link.clicks || 0) + 1, last_clicked_at: new Date().toISOString() })
       .eq('id', link.id);
 
     return NextResponse.json({ link, file: link.files });

@@ -19,9 +19,17 @@ CREATE TABLE public.users (
   brand_color         TEXT DEFAULT '#D4A017',
   subscription_status TEXT NOT NULL DEFAULT 'trial' CHECK (subscription_status IN ('trial','active','cancelled','expired')),
   trial_starts_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  trial_ends_at       TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '14 days'),
+  trial_ends_at       TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '7 days'),
   next_billing_date   TIMESTAMPTZ,
   billing_plan        TEXT DEFAULT 'monthly' CHECK (billing_plan IN ('monthly','annual')),
+  payment_method_added BOOLEAN NOT NULL DEFAULT FALSE,
+  payment_method      TEXT,
+  razorpay_customer_id TEXT,
+  razorpay_mandate_id TEXT,
+  profession          TEXT,
+  business_address    TEXT,
+  gst_registered      BOOLEAN NOT NULL DEFAULT FALSE,
+  gstin               TEXT,
   created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -293,8 +301,22 @@ CREATE INDEX idx_activity_logs_created   ON public.activity_logs(created_at DESC
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO public.users (id, email, name)
-  VALUES (NEW.id, NEW.email, COALESCE(NEW.raw_user_meta_data->>'name', split_part(NEW.email, '@', 1)));
+  INSERT INTO public.users (id, email, name, phone, company_name, profession, business_address, gst_registered, gstin, payment_method_added, payment_method, razorpay_customer_id, razorpay_mandate_id)
+  VALUES (
+    NEW.id, 
+    NEW.email, 
+    COALESCE(NEW.raw_user_meta_data->>'name', split_part(NEW.email, '@', 1)),
+    NEW.raw_user_meta_data->>'phone',
+    NEW.raw_user_meta_data->>'company_name',
+    NEW.raw_user_meta_data->>'profession',
+    NEW.raw_user_meta_data->>'business_address',
+    COALESCE((NEW.raw_user_meta_data->>'gst_registered')::boolean, false),
+    NEW.raw_user_meta_data->>'gstin',
+    COALESCE((NEW.raw_user_meta_data->>'payment_method_added')::boolean, false),
+    NEW.raw_user_meta_data->>'payment_method',
+    NEW.raw_user_meta_data->>'razorpay_customer_id',
+    NEW.raw_user_meta_data->>'razorpay_mandate_id'
+  );
 
   INSERT INTO public.white_label_settings (freelancer_id)
   VALUES (NEW.id);

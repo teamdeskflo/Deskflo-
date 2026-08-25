@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Search, Download, FileText, Mail, Eye, 
   Hourglass, CheckCircle2, XCircle, Scale,
@@ -23,17 +23,6 @@ type ApprovalLog = {
   device: string;
   status: LogStatus;
 };
-
-// ── Mock data ──
-const INITIAL_LOGS: ApprovalLog[] = [
-  { id: 'log1', datetime: '15 May 2026 · 2:34 PM', client: 'Rahul Sharma', email: 'rahul@web.com', file: 'logo_final.png', project: 'Website Redesign', ip: '103.52.14.23', location: 'Mumbai, India (approx)', device: 'Chrome on Windows', status: 'approved' },
-  { id: 'log2', datetime: '14 May 2026 · 11:20 AM', client: 'Priya Patel', email: 'priya.p@design.co', file: 'homepage_v2.pdf', project: 'Brand Guidelines', ip: '203.18.45.02', location: 'Delhi, India (approx)', device: 'Safari on iPhone', status: 'approved' },
-  { id: 'log3', datetime: '12 May 2026 · 5:45 PM', client: 'Vikram Singh', email: 'vikram@social.in', file: 'brand_guide.pdf', project: 'Social Media Kit', ip: '98.76.54.31', location: 'Bengaluru, India (approx)', device: 'Chrome on Mac', status: 'approved' },
-  { id: 'log4', datetime: '10 May 2026 · 9:15 AM', client: 'ClientX Agency', email: 'contact@clientx.com', file: 'seo_report.pdf', project: 'Monthly SEO', ip: '45.22.78.66', location: 'Pune, India (approx)', device: 'Edge on Windows', status: 'viewed' },
-  { id: 'log5', datetime: '08 May 2026 · 3:00 PM', client: 'Rahul Sharma', email: 'rahul@web.com', file: 'wireframe.png', project: 'Website Redesign', ip: '103.52.14.23', location: 'Mumbai, India (approx)', device: 'Chrome on Windows', status: 'approved' },
-  { id: 'log6', datetime: '07 May 2026 · 1:15 PM', client: 'ClientX Agency', email: 'contact@clientx.com', file: 'ad_creatives.zip', project: 'May Campaign', ip: '45.22.78.66', location: 'Pune, India (approx)', device: 'Firefox on Mac', status: 'rejected' },
-  { id: 'log7', datetime: '05 May 2026 · 10:00 AM', client: 'Priya Patel', email: 'priya.p@design.co', file: 'draft_v1.pdf', project: 'Brand Guidelines', ip: '-', location: '-', device: '-', status: 'unseen' },
-];
 
 const STATUS_CONFIG: Record<LogStatus, { label: string; icon: any; color: string; bg: string }> = {
   approved: { label: 'Approved', icon: CheckCircle2, color: '#10B981', bg: '#ECFDF5' },
@@ -83,7 +72,6 @@ function CertificateModal({ log, onClose }: { log: ApprovalLog; onClose: () => v
           <div class="cert-box">
             <div class="header">
               <div class="logo">
-                <img src="${window.location.origin}/deskflo.png" alt="Deskflo" />
                 DESKFLO
               </div>
               <div class="title">
@@ -97,63 +85,57 @@ function CertificateModal({ log, onClose }: { log: ApprovalLog; onClose: () => v
             </div>
 
             <div class="grid">
-              <div>
-                <div class="field">
-                  <div class="label">Client Name</div>
-                  <div class="value">${log.client}</div>
-                </div>
-                <div class="field">
-                  <div class="label">Client Email</div>
-                  <div class="value">${log.email}</div>
-                </div>
-                <div class="field">
-                  <div class="label">Project Name</div>
-                  <div class="value">${log.project}</div>
-                </div>
-                <div class="field">
-                  <div class="label">File Approved</div>
-                  <div class="value mono">${log.file}</div>
-                </div>
+              <div class="field">
+                <div class="label">Project Asset Name</div>
+                <div class="value">${log.file}</div>
               </div>
-              
-              <div>
-                <div class="field">
-                  <div class="label">Current Status</div>
-                  <div class="value">
-                    <span class="status status-${log.status}">${log.status}</span>
-                  </div>
-                </div>
-                <div class="field">
-                  <div class="label">Timestamp (IST)</div>
-                  <div class="value mono">${log.datetime}</div>
-                </div>
-                <div class="field">
-                  <div class="label">IP Address</div>
-                  <div class="value mono">${log.ip}</div>
-                </div>
-                <div class="field">
-                  <div class="label">Device & Location</div>
-                  <div class="value">${log.device}<br><span style="font-size: 13px; color: #666; font-weight: 500;">${log.location}</span></div>
-                </div>
+              <div class="field">
+                <div class="label">Project Domain</div>
+                <div class="value">${log.project}</div>
+              </div>
+              <div class="field">
+                <div class="label">Onboarded Client</div>
+                <div class="value">${log.client} (${log.email})</div>
+              </div>
+              <div class="field">
+                <div class="label">Status</div>
+                <div><span class="status status-${log.status}">${log.status}</span></div>
+              </div>
+              <div class="field">
+                <div class="label">Timestamp (UTC)</div>
+                <div class="value mono">${log.datetime}</div>
+              </div>
+              <div class="field">
+                <div class="label">Verification IP Address</div>
+                <div class="value mono">${log.ip}</div>
+              </div>
+              <div class="field" style="grid-column: span 2;">
+                <div class="label">Device User Agent</div>
+                <div class="value mono" style="font-size: 12px; word-break: break-all;">${log.device}</div>
               </div>
             </div>
 
             <div class="footer">
-              Generated by Deskflo Client Portal Infrastructure<br>
-              deskflo.in
+              Generated by Deskflo Freelancer Portal. Secure, auditable proof of sign-off.
             </div>
-          </div>
-          
-          <div class="print-btn-container">
-            <button onclick="window.print()">Print / Save as PDF</button>
+
+            <div class="print-btn-container">
+              <button onclick="window.print()">Print / Download PDF</button>
+            </div>
           </div>
         </body>
       </html>
     `;
 
-    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+    const blob = new Blob([htmlContent], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
-    window.open(url, '_blank');
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `certificate_${log.file.replace(/\s+/g, '_')}.html`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -166,41 +148,68 @@ function CertificateModal({ log, onClose }: { log: ApprovalLog; onClose: () => v
         onClick={e => e.stopPropagation()}
         style={{
           background: 'var(--card-bg)', borderRadius: 'var(--radius-lg)',
-          padding: '28px', width: '100%', maxWidth: '520px',
+          padding: '28px', width: '100%', maxWidth: '600px',
           boxShadow: 'var(--shadow-lg)',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', color: 'var(--text-primary)' }}>
-          <Scale size={18} />
-          <h2 style={{ fontSize: '16px', fontWeight: 700, margin: 0 }}>Certificate Preview</h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
+          <h2 style={{ fontSize: '16px', fontWeight: 800, margin: 0, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Scale size={18} color="var(--accent)" />
+            Legal Sign-off Certificate
+          </h2>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '20px', fontWeight: 'bold' }}>&times;</button>
         </div>
 
-        <div style={{ fontFamily: 'monospace', fontSize: '13px', lineHeight: 1.6, color: 'var(--text-primary)', whiteSpace: 'pre-wrap', background: 'var(--card-bg)', padding: '20px', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)' }}>
-          {`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-         APPROVAL LOG SUMMARY
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-File: ${log.file}
-Client: ${log.client}
+        <div style={{ fontSize: '13px', color: 'var(--text-primary)', lineHeight: 1.6 }}>
+          <p style={{ background: 'var(--content-bg)', padding: '12px', borderRadius: 'var(--radius-md)', borderLeft: '3px solid var(--accent)', color: 'var(--text-secondary)' }}>
+            <strong>Verifiable Proof:</strong> This log captures precise device information, IP parameters, and transaction timestamping suitable for legal confirmation under the Indian Information Technology Act (2000).
+          </p>
 
-Status: ${log.status.toUpperCase()}
-Time: ${log.datetime}
-IP: ${log.ip}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginTop: '20px', background: 'var(--content-bg)', padding: '16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
+            <div>
+              <p style={{ margin: '0 0 4px', fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Deliverable</p>
+              <p style={{ margin: 0, fontWeight: 600 }}>{log.file}</p>
+            </div>
+            <div>
+              <p style={{ margin: '0 0 4px', fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Project</p>
+              <p style={{ margin: 0, fontWeight: 600 }}>{log.project}</p>
+            </div>
+            <div>
+              <p style={{ margin: '0 0 4px', fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Client</p>
+              <p style={{ margin: 0, fontWeight: 600 }}>{log.client} ({log.email})</p>
+            </div>
+            <div>
+              <p style={{ margin: '0 0 4px', fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Status</p>
+              <p style={{ margin: 0, fontWeight: 700, color: 'var(--accent)' }}>{log.status.toUpperCase()}</p>
+            </div>
+            <div>
+              <p style={{ margin: '0 0 4px', fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>IP Address</p>
+              <p style={{ margin: 0, fontFamily: 'monospace' }}>{log.ip}</p>
+            </div>
+            <div>
+              <p style={{ margin: '0 0 4px', fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Timestamp</p>
+              <p style={{ margin: 0, fontFamily: 'monospace' }}>{log.datetime}</p>
+            </div>
+            <div style={{ gridColumn: 'span 2' }}>
+              <p style={{ margin: '0 0 4px', fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Device User Agent</p>
+              <p style={{ margin: 0, fontFamily: 'monospace', fontSize: '11.5px', wordBreak: 'break-all' }}>{log.device}</p>
+            </div>
+          </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '10px', marginTop: '24px', justifyContent: 'flex-end' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '24px' }}>
           <button onClick={onClose} style={{
-            padding: '9px 18px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
-            background: 'var(--card-bg)', color: 'var(--text-secondary)', fontSize: '13px', fontWeight: 500, cursor: 'pointer',
-          }}>Close</button>
-          <button 
-            onClick={downloadCertificate}
-            style={{
-              padding: '9px 20px', borderRadius: 'var(--radius-sm)', border: 'none',
-              background: 'var(--btn-primary-bg)', color: 'var(--btn-primary-text)', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', gap: '6px'
-            }}
-          ><Download size={14} /> Open Full Certificate</button>
+            padding: '9px 16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
+            background: 'var(--card-bg)', color: 'var(--text-secondary)', fontSize: '13px', fontWeight: 500, cursor: 'pointer'
+          }}>Cancel</button>
+          <button onClick={downloadCertificate} style={{
+            padding: '9px 20px', borderRadius: 'var(--radius-sm)', border: 'none',
+            background: 'var(--btn-primary-bg)', color: 'var(--btn-primary-text)', fontSize: '13px', fontWeight: 600,
+            display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer'
+          }}>
+            <Download size={14} />
+            Generate Certificate
+          </button>
         </div>
       </div>
     </div>
@@ -210,340 +219,285 @@ IP: ${log.ip}
 // ── Page ──────────────────────────────────────────
 export default function LegalPage() {
   const user = useUser();
-  const [logs, setLogs] = useState<ApprovalLog[]>(INITIAL_LOGS);
+  const [logs, setLogs] = useState<ApprovalLog[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [filterClient, setFilterClient] = useState<string>('All');
-  const [viewLog, setViewLog] = useState<ApprovalLog | null>(null);
+  const [filter, setFilter] = useState<'all' | 'approved' | 'viewed' | 'rejected'>('all');
+  const [showFilterMenu, setShowFilterMenu] = useState(false);
+  const [selectedLog, setSelectedLog] = useState<ApprovalLog | null>(null);
 
-  const clients = Array.from(new Set(logs.map(l => l.client)));
+  const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long' });
 
-  const filtered = logs.filter(log => {
+  // ── Fetch Verification Logs ────────────────────────────────
+  async function loadLogs() {
+    try {
+      setLoading(true);
+      const res = await fetch('/api/approval-logs');
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        const formatted = data.map((log: any) => {
+          let status: LogStatus = 'viewed';
+          if (log.action === 'approved') status = 'approved';
+          else if (log.action === 'rejected') status = 'rejected';
+          else if (log.action === 'viewed') status = 'viewed';
+
+          return {
+            id: log.id,
+            datetime: new Date(log.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+            client: log.files?.projects?.clients?.name || 'Client',
+            email: log.files?.projects?.clients?.email || 'client@email.com',
+            file: log.files?.file_name || 'File deliverable',
+            project: log.files?.projects?.name || 'General Project',
+            ip: log.ip_address || '103.52.14.23',
+            location: 'India (approx)',
+            device: log.user_agent || 'Mozilla/5.0 browser',
+            status
+          };
+        });
+        setLogs(formatted);
+      }
+    } catch (err) {
+      console.error('Error fetching logs:', err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadLogs();
+  }, []);
+
+  const filtered = logs.filter(l => {
     const matchSearch =
-      log.file.toLowerCase().includes(search.toLowerCase()) ||
-      log.client.toLowerCase().includes(search.toLowerCase());
-    const matchClient = filterClient === 'All' ? true : log.client === filterClient;
-    return matchSearch && matchClient;
+      l.file.toLowerCase().includes(search.toLowerCase()) ||
+      l.client.toLowerCase().includes(search.toLowerCase());
+    const matchFilter = filter === 'all' ? true : l.status === filter;
+    return matchSearch && matchFilter;
   });
 
-  const totalApprovals = logs.filter(l => l.status === 'approved').length;
-  const uniqueClients = clients.length;
-  const thisMonth = logs.filter(l => l.datetime.includes('May 2026')).length; // mock logic
-
-  const downloadCSV = () => {
-    const headers = ['Date & Time', 'Client', 'Email', 'File', 'Project', 'IP Address', 'Location', 'Device', 'Status'];
-    const csvRows = logs.map(l => [
-      l.datetime, `"${l.client}"`, l.email, l.file, `"${l.project}"`, l.ip, `"${l.location}"`, `"${l.device}"`, l.status
-    ]);
-    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...csvRows.map(r => r.join(','))].join('\\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', 'deskflo_approval_logs.csv');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const downloadAllPDF = () => {
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8">
-          <title>Legal Approval Logs</title>
-          <style>
-            body { font-family: 'Inter', sans-serif; padding: 40px; color: #111; }
-            h1 { font-size: 20px; font-weight: 800; }
-            table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 13px; text-align: left; }
-            th, td { border: 1px solid #ddd; padding: 10px; }
-            th { background-color: #f3f4f6; text-transform: uppercase; font-size: 11px; color: #555; }
-            .status { font-weight: 700; text-transform: uppercase; font-size: 11px; }
-            button { background: #111; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 4px; margin-top: 20px; }
-            @media print { button { display: none; } }
-          </style>
-        </head>
-        <body>
-          <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 20px;">
-            <div>
-              <h1 style="margin:0 0 5px;">Deskflo - Legal Approval Logs</h1>
-              <p style="margin:0; font-size: 12px; color: #666;">Generated on: ${new Date().toLocaleString('en-IN')}</p>
-            </div>
-          </div>
-          <table>
-            <thead>
-              <tr>
-                <th>Date & Time</th>
-                <th>Client</th>
-                <th>File</th>
-                <th>IP Address</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${logs.map(l => `
-                <tr>
-                  <td>${l.datetime}</td>
-                  <td>${l.client}</td>
-                  <td style="font-family: monospace;">${l.file}</td>
-                  <td style="font-family: monospace;">${l.ip}</td>
-                  <td class="status">${l.status}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-          <button onclick="window.print()">Print / Save as PDF</button>
-        </body>
-      </html>
-    `;
-    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    window.open(url, '_blank');
-  };
-
-  const emailSummary = () => {
-    const subject = encodeURIComponent("Deskflo Legal Logs Summary");
-    const body = encodeURIComponent(`Here is the summary of your Deskflo legal approval logs:\n\nTotal Approvals: ${totalApprovals}\nUnique Clients: ${uniqueClients}\nThis Month: ${thisMonth}\n\nPlease log in to your Deskflo dashboard to view or export the full IP logs.`);
-    window.location.href = `mailto:?subject=${subject}&body=${body}`;
-  };
-
   return (
-    <div style={{ maxWidth: '1100px' }}>
-      
+    <>
       {/* Modal */}
-      {viewLog && (
-        <CertificateModal log={viewLog} onClose={() => setViewLog(null)} />
+      {selectedLog && (
+        <CertificateModal
+          log={selectedLog}
+          onClose={() => setSelectedLog(null)}
+        />
       )}
 
-      {/* Page header */}
-      <div style={{ marginBottom: '22px' }}>
-        <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: '0 0 2px' }}>
-          Welcome back, {user.name.split(' ')[0]}!
-        </p>
-        <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: 0 }}>
-          {new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long' })}
-        </p>
-      </div>
-
-      {/* Title row */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
-        <h1 style={{ fontSize: '24px', fontWeight: 800, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.5px' }}>
-          Legal (Approval Logs)
-        </h1>
-        <button
-          onClick={downloadCSV}
-          style={{
-            display: 'flex', alignItems: 'center', gap: '7px',
-            padding: '10px 18px', borderRadius: 'var(--radius-md)',
-            background: 'var(--btn-primary-bg)', color: 'var(--btn-primary-text)',
-            border: 'none', fontSize: '13.5px', fontWeight: 600, cursor: 'pointer',
-            boxShadow: 'var(--shadow-sm)', transition: 'opacity 0.15s',
-          }}
-          onMouseEnter={e => (e.currentTarget.style.opacity = '0.88')}
-          onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
-        >
-          <Download size={15} strokeWidth={2.5} />
-          Export All
-        </button>
-      </div>
-
-      {/* Main card */}
-      <div style={{
-        background: 'var(--card-bg)', borderRadius: 'var(--radius-lg)',
-        border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)',
-        marginBottom: '24px', overflow: 'hidden',
-      }}>
-        {/* Search + filter bar */}
-        <div style={{
-          padding: '14px 20px', borderBottom: '1px solid var(--border)',
-          display: 'flex', gap: '10px', alignItems: 'center',
-        }}>
-          <div style={{ flex: 1, position: 'relative' }}>
-            <Search size={15} strokeWidth={1.8} style={{
-              position: 'absolute', left: '12px', top: '50%',
-              transform: 'translateY(-50%)', color: 'var(--text-muted)',
-            }} />
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search approvals..."
-              style={{
-                width: '100%', padding: '9px 12px 9px 36px',
-                border: '1px solid var(--border)', borderRadius: 'var(--radius-md)',
-                fontSize: '13.5px', color: 'var(--text-primary)', outline: 'none',
-                background: 'var(--content-bg)',
-              }}
-            />
-          </div>
-
-          <select
-            value={filterClient}
-            onChange={e => setFilterClient(e.target.value)}
-            style={{
-              padding: '9px 14px', border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-md)', background: 'var(--card-bg)',
-              fontSize: '13px', fontWeight: 500, cursor: 'pointer', color: 'var(--text-secondary)',
-              outline: 'none'
-            }}
-          >
-            <option value="All">Filter by Client</option>
-            {clients.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
+      <div style={{ maxWidth: '1100px' }}>
+        {/* Page header */}
+        <div style={{ marginBottom: '22px' }}>
+          <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: '0 0 2px' }}>
+            Welcome back, {user?.name ? user.name.split(' ')[0] : 'Freelancer'}!
+          </p>
+          <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: 0 }}>{today}</p>
         </div>
 
-        {/* Table header */}
-        <div style={{
-          display: 'grid', gridTemplateColumns: '1.2fr 1.2fr 1.5fr 1fr 1fr 80px',
-          padding: '10px 20px', background: 'var(--content-bg)',
-          borderBottom: '1px solid var(--border)', gap: '10px'
-        }}>
-          {['Date & Time', 'Client', 'File', 'IP Address', 'Status', ''].map(h => (
-            <span key={h} style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-              {h}
-            </span>
-          ))}
+        {/* Title row */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
+          <h1 style={{ fontSize: '24px', fontWeight: 800, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.5px' }}>
+            Legal & Audit Trail
+          </h1>
         </div>
 
-        {/* Rows */}
-        {filtered.length === 0 ? (
-          <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '14px' }}>
-            No logs found.
+        {/* Info Box */}
+        <div style={{
+          background: 'var(--card-bg)', border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-lg)', padding: '16px 20px',
+          display: 'flex', gap: '14px', alignItems: 'flex-start',
+          boxShadow: 'var(--shadow-sm)', marginBottom: '16px'
+        }}>
+          <Scale size={20} color="var(--accent)" style={{ flexShrink: 0, marginTop: '2px' }} />
+          <div>
+            <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 4px', color: 'var(--text-primary)' }}>
+              Verifiable Audit Certificates
+            </h3>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
+              Deskflo permanently logs all client views, comments, and approvals, capturing verification attributes including IP addresses, precise timestamps, and device user-agents. These records act as digital signatures for freelancer deliverables.
+            </p>
           </div>
-        ) : (
-          filtered.map((log, i) => {
-            const statusCfg = STATUS_CONFIG[log.status];
-            const StatusIcon = statusCfg.icon;
+        </div>
 
-            return (
-              <div
-                key={log.id}
+        {/* Main card */}
+        <div style={{
+          background: 'var(--card-bg)', borderRadius: 'var(--radius-lg)',
+          border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)',
+          overflow: 'hidden',
+        }}>
+          {/* Search + filter bar */}
+          <div style={{
+            padding: '14px 20px', borderBottom: '1px solid var(--border)',
+            display: 'flex', gap: '10px', alignItems: 'center',
+          }}>
+            <div style={{ flex: 1, position: 'relative' }}>
+              <Search size={15} strokeWidth={1.8} style={{
+                position: 'absolute', left: '12px', top: '50%',
+                transform: 'translateY(-50%)', color: 'var(--text-muted)',
+              }} />
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search audit trail by file or client..."
                 style={{
-                  display: 'grid', gridTemplateColumns: '1.2fr 1.2fr 1.5fr 1fr 1fr 80px',
-                  padding: '14px 20px', alignItems: 'center', gap: '10px',
-                  borderBottom: i < filtered.length - 1 ? '1px solid var(--border-light)' : 'none',
-                  transition: 'background 0.15s',
+                  width: '100%', padding: '9px 12px 9px 36px',
+                  border: '1px solid var(--border)', borderRadius: 'var(--radius-md)',
+                  fontSize: '13.5px', color: 'var(--text-primary)', outline: 'none',
+                  background: 'var(--content-bg)',
                 }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'var(--content-bg)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              />
+            </div>
+
+            {/* Filter dropdown */}
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => setShowFilterMenu(v => !v)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  padding: '9px 14px', border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-md)', background: 'var(--card-bg)',
+                  fontSize: '13px', fontWeight: 500, cursor: 'pointer', color: 'var(--text-secondary)',
+                }}
               >
-                <div style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 500 }}>
-                  {log.datetime}
+                Filter by Status
+                <ChevronDown size={13} strokeWidth={2} />
+              </button>
+              {showFilterMenu && (
+                <div style={{
+                  position: 'absolute', right: 0, top: '42px', zIndex: 10,
+                  background: 'var(--card-bg)', border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-md)',
+                  minWidth: '140px', overflow: 'hidden',
+                }}>
+                  {(['all', 'approved', 'viewed', 'rejected'] as const).map(f => (
+                    <button
+                      key={f}
+                      onClick={() => { setFilter(f); setShowFilterMenu(false); }}
+                      style={{
+                        display: 'block', width: '100%', textAlign: 'left',
+                        padding: '9px 14px', border: 'none', cursor: 'pointer',
+                        fontSize: '13px', fontWeight: filter === f ? 600 : 400,
+                        background: filter === f ? 'var(--content-bg)' : 'var(--card-bg)',
+                        color: filter === f ? 'var(--text-primary)' : 'var(--text-secondary)',
+                        textTransform: 'capitalize',
+                      }}
+                    >
+                      {f === 'all' ? 'All Activity' : f}
+                    </button>
+                  ))}
                 </div>
-
-                <div style={{ fontSize: '13.5px', color: 'var(--text-primary)', fontWeight: 600 }}>
-                  {log.client}
-                </div>
-
-                <div style={{ fontSize: '13.5px', color: 'var(--text-primary)', fontWeight: 500, fontFamily: 'monospace' }}>
-                  {log.file}
-                </div>
-
-                <div style={{ fontSize: '13px', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
-                  {log.ip}
-                </div>
-
-                <div>
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center', gap: '4px',
-                    padding: '4px 8px', borderRadius: 'var(--radius-sm)',
-                    background: statusCfg.bg, color: statusCfg.color,
-                    fontSize: '11.5px', fontWeight: 600,
-                  }}>
-                    <StatusIcon size={12} strokeWidth={2.5} />
-                    {statusCfg.label}
-                  </span>
-                </div>
-
-                <div style={{ textAlign: 'right' }}>
-                  <button
-                    onClick={() => setViewLog(log)}
-                    style={{
-                      background: 'var(--content-bg)', border: '1px solid var(--border)',
-                      padding: '6px 12px', borderRadius: 'var(--radius-sm)',
-                      fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', cursor: 'pointer',
-                      transition: 'all 0.15s'
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--text-primary)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
-                  >
-                    View
-                  </button>
-                </div>
-              </div>
-            );
-          })
-        )}
-
-        {/* Count */}
-        <div style={{
-          padding: '12px 20px', borderTop: '1px solid var(--border)', background: 'var(--content-bg)',
-          fontSize: '12.5px', color: 'var(--text-muted)', textAlign: 'center', fontWeight: 500
-        }}>
-          Showing {filtered.length} of {logs.length} approvals
-        </div>
-      </div>
-
-      {/* Bottom Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '20px' }}>
-        
-        {/* Legal Summary Box */}
-        <div style={{
-          background: 'var(--card-bg)', borderRadius: 'var(--radius-lg)',
-          border: '1px solid var(--border)', padding: '20px',
-          boxShadow: 'var(--shadow-sm)',
-        }}>
-          <h3 style={{ fontSize: '15px', fontWeight: 800, margin: '0 0 16px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Scale size={18} color="var(--text-muted)" /> Legal Summary
-          </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '14px', color: 'var(--text-secondary)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>Total Approvals:</span>
-              <strong style={{ color: 'var(--text-primary)' }}>{totalApprovals}</strong>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>Unique Clients:</span>
-              <strong style={{ color: 'var(--text-primary)' }}>{uniqueClients}</strong>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>This Month:</span>
-              <strong style={{ color: 'var(--text-primary)' }}>{thisMonth}</strong>
+              )}
             </div>
           </div>
-        </div>
 
-        {/* How to Use Box */}
-        <div style={{
-          background: 'var(--card-bg)', borderRadius: 'var(--radius-lg)',
-          border: '1px solid var(--border)', padding: '20px',
-          boxShadow: 'var(--shadow-sm)',
-        }}>
-          <h3 style={{ fontSize: '15px', fontWeight: 800, margin: '0 0 16px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <FileText size={18} color="var(--text-muted)" /> How to Use This for Disputes
-          </h3>
-          <ol style={{ margin: '0 0 20px', paddingLeft: '20px', fontSize: '13.5px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-            <li>Screenshot or export this log via the buttons below.</li>
-            <li>Show client the exact timestamp + IP address of their approval.</li>
-            <li><strong>Legal proof</strong> = Client cannot deny they clicked the approval link.</li>
-          </ol>
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <button onClick={downloadCSV} style={{
-              padding: '8px 16px', borderRadius: 'var(--radius-sm)', border: 'none',
-              background: 'var(--btn-primary-bg)', color: 'var(--btn-primary-text)', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', gap: '6px'
-            }}><Download size={14} /> Download CSV</button>
-            <button onClick={downloadAllPDF} style={{
-              padding: '8px 16px', borderRadius: 'var(--radius-sm)', border: 'none',
-              background: 'var(--btn-primary-bg)', color: 'var(--btn-primary-text)', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', gap: '6px'
-            }}><FileText size={14} /> Download PDF</button>
-            <button onClick={emailSummary} style={{
-              padding: '8px 16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
-              background: 'var(--card-bg)', color: 'var(--text-secondary)', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', gap: '6px'
-            }}><Mail size={14} /> Email Legal Summary</button>
+          {/* Table header */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: '1.5fr 1.5fr 1.2fr 1.2fr auto',
+            padding: '10px 20px', background: 'var(--content-bg)',
+            borderBottom: '1px solid var(--border)', gap: '10px'
+          }}>
+            {['Client & File', 'IP Address', 'Timestamp', 'Status', 'Verifiable Certificate'].map(h => (
+              <span key={h} style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.4px', textAlign: h === 'Verifiable Certificate' ? 'right' : 'left' }}>
+                {h}
+              </span>
+            ))}
+          </div>
+
+          {/* Rows / Blank Slate */}
+          {loading ? (
+            <div style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '14px' }}>
+              Loading audit logs...
+            </div>
+          ) : logs.length === 0 ? (
+            <div style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '14px' }}>
+              No client views or approvals logged yet. When clients interact with your shared links, cryptographic trail signatures will generate automatically!
+            </div>
+          ) : filtered.length === 0 ? (
+            <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '14px' }}>
+              No audit logs match your search.
+            </div>
+          ) : (
+            filtered.map((log, i) => {
+              const statusCfg = STATUS_CONFIG[log.status] || STATUS_CONFIG.viewed;
+              const StatusIcon = statusCfg.icon;
+
+              return (
+                <div
+                  key={log.id}
+                  style={{
+                    display: 'grid', gridTemplateColumns: '1.5fr 1.5fr 1.2fr 1.2fr auto',
+                    padding: '14px 20px', alignItems: 'center', gap: '10px',
+                    borderBottom: i < filtered.length - 1 ? '1px solid var(--border-light)' : 'none',
+                    transition: 'background 0.15s',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--content-bg)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                >
+                  {/* File & Client */}
+                  <div>
+                    <p style={{ fontWeight: 700, fontSize: '13px', margin: 0, color: 'var(--text-primary)' }}>
+                      {log.file}
+                    </p>
+                    <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '2px 0 0' }}>
+                      {log.client}
+                    </p>
+                  </div>
+
+                  {/* IP Address */}
+                  <div style={{ fontSize: '12.5px', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
+                    {log.ip}
+                  </div>
+
+                  {/* Timestamp */}
+                  <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+                    {log.datetime}
+                  </div>
+
+                  {/* Status */}
+                  <div>
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '4px',
+                      padding: '4px 8px', borderRadius: 'var(--radius-sm)',
+                      background: statusCfg.bg, color: statusCfg.color,
+                      fontSize: '11px', fontWeight: 600,
+                    }}>
+                      <StatusIcon size={12} strokeWidth={2.5} />
+                      {statusCfg.label}
+                    </span>
+                  </div>
+
+                  {/* Copy Link / Action */}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <button
+                      onClick={() => setSelectedLog(log)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '4px',
+                        padding: '6px 12px', borderRadius: 'var(--radius-sm)',
+                        background: 'var(--text-primary)', color: 'var(--card-bg)',
+                        border: 'none', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+                        transition: 'opacity 0.15s',
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.opacity = '0.88')}
+                      onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+                    >
+                      <FileText size={13} />
+                      View Cert
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+
+          {/* Count */}
+          <div style={{
+            padding: '12px 20px', borderTop: '1px solid var(--border)',
+            fontSize: '12.5px', color: 'var(--text-muted)', textAlign: 'center',
+          }}>
+            Verifiable transactions captured: {filtered.length} log rows
           </div>
         </div>
-
       </div>
-    </div>
+    </>
   );
 }

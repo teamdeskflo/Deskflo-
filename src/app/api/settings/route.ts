@@ -41,10 +41,10 @@ export async function PUT(request: NextRequest) {
 
     switch (section) {
       case 'profile': {
-        const { name, phone, company_name, brand_color } = data;
+        const { name, phone, company_name, gst, brand_color } = data;
         const { error } = await supabase
           .from('users')
-          .update({ name, phone, company_name, brand_color })
+          .update({ name, phone, company_name, gst, brand_color })
           .eq('id', freelancerId);
         if (error) throw error;
         break;

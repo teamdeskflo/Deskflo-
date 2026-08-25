@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Download, RefreshCcw, TrendingUp, TrendingDown, IndianRupee,
   CheckCircle2, FolderOpen, Hourglass, Trophy, Briefcase,
@@ -14,22 +14,24 @@ function TrendChart({
 }: {
   data: number[], labels: string[], color: string, formatValue: (val: number) => string
 }) {
-  const max = Math.max(...data) * 1.1; // Add 10% headroom
+  const max = Math.max(...data, 1000) * 1.1; // Add 10% headroom
   const min = 0;
   const width = 400;
   const height = 120;
 
-  const points = data.map((val, i) => {
-    const x = (i / (data.length - 1)) * width;
-    const y = height - ((val - min) / (max - min)) * height;
-    return `${x},${y}`;
-  }).join(' ');
+  const points = data.length > 0 
+    ? data.map((val, i) => {
+        const x = data.length > 1 ? (i / (data.length - 1)) * width : width / 2;
+        const y = height - ((val - min) / (max - min)) * height;
+        return `${x},${y}`;
+      }).join(' ')
+    : `0,${height} ${width},${height}`;
 
   const areaPoints = `0,${height} ${points} ${width},${height}`;
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '160px' }}>
-      {/* Y-Axis Labels (Rough estimation) */}
+      {/* Y-Axis Labels */}
       <div style={{ position: 'absolute', left: 0, top: 0, bottom: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)' }}>
         <span>{formatValue(max)}</span>
         <span>{formatValue(max / 2)}</span>
@@ -54,23 +56,21 @@ function TrendChart({
           <polygon points={areaPoints} fill={`url(#grad-${color})`} />
 
           {/* Line */}
-          <polyline fill="none" stroke={color} strokeWidth="3" points={points} strokeLinejoin="round" strokeLinecap="round" />
+          <polyline fill="none" stroke={color} strokeWidth={3} points={points} strokeLinejoin="round" strokeLinecap="round" />
 
           {/* Points */}
           {data.map((val, i) => {
-            const x = (i / (data.length - 1)) * width;
+            const x = data.length > 1 ? (i / (data.length - 1)) * width : width / 2;
             const y = height - ((val - min) / (max - min)) * height;
             return (
               <g key={i}>
                 <circle cx={x} cy={y} r="4" fill="white" stroke={color} strokeWidth="2" />
-                {/* Data label on points (optional, showing on last point) */}
                 {i === data.length - 1 && (
                   <text x={x} y={y - 10} fontSize="12" fontWeight="bold" fill="var(--text-primary)" textAnchor="end">
                     {formatValue(val)}
                   </text>
                 )}
-                {/* Data label on 3rd point just like the design */}
-                {i === 2 && (
+                {i === 2 && data.length > 2 && (
                   <text x={x} y={y - 10} fontSize="12" fontWeight="bold" fill="var(--text-primary)" textAnchor="middle">
                     {formatValue(val)}
                   </text>
@@ -94,21 +94,51 @@ export default function AnalyticsPage() {
   const user = useUser();
   const [dateRange, setDateRange] = useState('Last 30 Days');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const handleRefresh = () => {
+  // Stats State
+  const [stats, setStats] = useState<any>({
+    revenue: { total: 0, pending: 0, overdue: 0, monthly: [] },
+    projects: { total: 0, active: 0, completed: 0 },
+    clients: { total: 0, top: [] },
+    files: { total: 0, approved: 0, approvalRate: 0 },
+    tasks: { pending: 0, overdue: 0 },
+  });
+
+  async function loadAnalytics() {
+    try {
+      setLoading(true);
+      const res = await fetch('/api/analytics');
+      const data = await res.json();
+      if (data && !data.error) {
+        setStats(data);
+      }
+    } catch (err) {
+      console.error('Error loading analytics:', err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadAnalytics();
+  }, []);
+
+  const handleRefresh = async () => {
     setIsRefreshing(true);
-    setTimeout(() => setIsRefreshing(false), 800);
+    await loadAnalytics();
+    setIsRefreshing(false);
   };
 
   const downloadCSV = () => {
     const headers = ['Metric', 'Value'];
     const csvRows = [
-      ['Revenue', '45000'],
-      ['Approval Rate', '87%'],
-      ['Files Uploaded', '24'],
-      ['Pending Approvals', '6']
+      ['Total Paid Revenue', String(stats.revenue?.total || 0)],
+      ['Approval Rate', `${stats.files?.approvalRate || 0}%`],
+      ['Total Files Uploaded', String(stats.files?.total || 0)],
+      ['Pending Approvals', String(stats.files?.total - stats.files?.approved || 0)]
     ];
-    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...csvRows.map(r => r.join(','))].join('\\n');
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...csvRows.map(r => r.join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
@@ -118,68 +148,55 @@ export default function AnalyticsPage() {
     document.body.removeChild(link);
   };
 
-  // Mock Data
-  const trendLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
-  const revenueData = [18000, 20000, 25000, 32000, 40000, 45000];
-  const approvalData = [45, 50, 55, 68, 75, 87];
-
-  const topClients = [
-    { name: 'Rahul Sharma', amount: '₹25k' },
-    { name: 'Priya Patel', amount: '₹18k' },
-    { name: 'Vikram Singh', amount: '₹12k' },
-    { name: 'ClientX Agency', amount: '₹8k' },
-    { name: 'Neha Gupta', amount: '₹5k' },
+  // Trend Data mapping from monthly list
+  const monthlyList = stats.revenue?.monthly || [];
+  const trendLabels = monthlyList.length > 0 ? monthlyList.map((m: any) => m.month) : ['-', '-', '-', '-', '-', '-'];
+  const revenueData = monthlyList.length > 0 ? monthlyList.map((m: any) => m.revenue) : [0, 0, 0, 0, 0, 0];
+  
+  // Approximation of approval trends for styling (flat rate or mapped logs)
+  const approvalData = [
+    stats.files?.approvalRate || 0,
+    stats.files?.approvalRate || 0,
+    stats.files?.approvalRate || 0,
+    stats.files?.approvalRate || 0,
+    stats.files?.approvalRate || 0,
+    stats.files?.approvalRate || 0
   ];
 
-  const topProjects = [
-    { name: 'Website Redesign', amount: '₹30k' },
-    { name: 'Social Media Kit', amount: '₹15k' },
-    { name: 'SEO Audit', amount: '₹10k' },
-    { name: 'Logo Package', amount: '₹8k' },
-    { name: 'Brand Guide', amount: '₹5k' },
-  ];
+  // Top clients list
+  const topClients = (stats.clients?.top || []).map((tc: any) => ({
+    name: tc.name,
+    amount: `₹${Number(tc.revenue).toLocaleString('en-IN')}`
+  }));
 
-  // Generate insights based on the selected date range and data
+  // Generate actionable insights
   const generateInsights = () => {
     const insights = [];
 
-    // Simulate dynamic variations based on dateRange selection
-    const factor = dateRange === 'Last 7 Days' ? 0.3 : dateRange === 'Last 90 Days' ? 2 : 1;
-    const revUp = Math.floor(23 * factor);
-    const appDrop = Math.floor(8 / factor);
-
-    // Approval insight
-    if (appDrop > 5) {
+    const approvalRate = stats.files?.approvalRate || 0;
+    if (approvalRate < 80 && stats.files?.total > 0) {
       insights.push({
         icon: CircleAlert, color: '#EF4444', bg: '#FEE2E2',
-        text: `Your approval rate dropped by ${appDrop}% this period. Send reminders to pending files.`
+        text: `Your approval rate is currently at ${approvalRate}%. Consider sending reminders for pending files.`
       });
     } else {
       insights.push({
         icon: CheckCircle2, color: '#10B981', bg: '#ECFDF5',
-        text: `Approval rate is strong and stable at ${approvalData[approvalData.length - 1]}%. Great client communication!`
+        text: `Approval rate is healthy at ${approvalRate}%. Excellent client alignment!`
       });
     }
 
-    // Revenue insight
-    if (revUp > 0) {
-      insights.push({
-        icon: CheckCircle2, color: '#10B981', bg: '#ECFDF5',
-        text: `Revenue up ${revUp}% this period! Outstanding job!`
-      });
-    } else {
+    if (stats.revenue?.overdue > 0) {
       insights.push({
         icon: CircleAlert, color: '#F59E0B', bg: '#FFFBEB',
-        text: `Revenue is slightly down. Consider upselling your top clients like ${topClients[0].name}.`
+        text: `${stats.revenue?.overdue} invoices are currently overdue. Send payment links immediately.`
       });
     }
 
-    // Overdue insight
-    const overdue = dateRange === 'This Month' ? 3 : dateRange === 'Last 7 Days' ? 1 : Math.floor(5 * factor);
-    if (overdue > 0) {
+    if (stats.revenue?.total === 0) {
       insights.push({
-        icon: CircleAlert, color: '#F59E0B', bg: '#FFFBEB',
-        text: `${overdue} invoices are currently overdue. Send payment reminders.`
+        icon: Briefcase, color: '#6366F1', bg: '#EEF2FF',
+        text: `Welcome to Deskflo! Share your first deliverable or create an invoice to populate analytics.`
       });
     }
 
@@ -205,10 +222,8 @@ export default function AnalyticsPage() {
                 onChange={e => setDateRange(e.target.value)}
                 style={{ padding: '6px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', fontSize: '13px', fontWeight: 600, outline: 'none', background: 'var(--card-bg)' }}
               >
-                <option>Last 7 Days</option>
                 <option>Last 30 Days</option>
-                <option>Last 90 Days</option>
-                <option>This Month</option>
+                <option>All Time</option>
               </select>
             </div>
 
@@ -255,10 +270,11 @@ export default function AnalyticsPage() {
             </span>
             <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '0.5px' }}>REVENUE</span>
           </div>
-          <div style={{ fontSize: '32px', fontWeight: 900, color: 'var(--text-primary)', letterSpacing: '-1px', marginBottom: '4px' }}>₹45,000</div>
+          <div style={{ fontSize: '32px', fontWeight: 900, color: 'var(--text-primary)', letterSpacing: '-1px', marginBottom: '4px' }}>
+            ₹{(stats.revenue?.total || 0).toLocaleString('en-IN')}
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
-            <span style={{ color: 'var(--text-secondary)' }}>This Month</span>
-            <span style={{ color: '#10B981', display: 'flex', alignItems: 'center', fontWeight: 600 }}><TrendingUp size={14} style={{ marginRight: '2px' }} /> 23% vs last month</span>
+            <span style={{ color: 'var(--text-secondary)' }}>All Time Revenue</span>
           </div>
         </div>
 
@@ -270,9 +286,11 @@ export default function AnalyticsPage() {
             </span>
             <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '0.5px' }}>APPROVAL RATE</span>
           </div>
-          <div style={{ fontSize: '32px', fontWeight: 900, color: 'var(--text-primary)', letterSpacing: '-1px', marginBottom: '4px' }}>87%</div>
+          <div style={{ fontSize: '32px', fontWeight: 900, color: 'var(--text-primary)', letterSpacing: '-1px', marginBottom: '4px' }}>
+            {stats.files?.approvalRate || 0}%
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
-            <span style={{ color: '#10B981', display: 'flex', alignItems: 'center', fontWeight: 600 }}>+12% from last month</span>
+            <span style={{ color: 'var(--text-secondary)' }}>Files Approved: {stats.files?.approved || 0} / {stats.files?.total || 0}</span>
           </div>
         </div>
 
@@ -284,10 +302,11 @@ export default function AnalyticsPage() {
             </span>
             <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '0.5px' }}>FILES UPLOADED</span>
           </div>
-          <div style={{ fontSize: '32px', fontWeight: 900, color: 'var(--text-primary)', letterSpacing: '-1px', marginBottom: '4px' }}>24</div>
+          <div style={{ fontSize: '32px', fontWeight: 900, color: 'var(--text-primary)', letterSpacing: '-1px', marginBottom: '4px' }}>
+            {stats.files?.total || 0}
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
-            <span style={{ color: 'var(--text-secondary)' }}>This Month</span>
-            <span style={{ color: '#EF4444', display: 'flex', alignItems: 'center', fontWeight: 600 }}><TrendingDown size={14} style={{ marginRight: '2px' }} /> 8% vs last month</span>
+            <span style={{ color: 'var(--text-secondary)' }}>Deliverables active in Deskflo</span>
           </div>
         </div>
 
@@ -299,9 +318,11 @@ export default function AnalyticsPage() {
             </span>
             <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '0.5px' }}>PENDING APPROVALS</span>
           </div>
-          <div style={{ fontSize: '32px', fontWeight: 900, color: 'var(--text-primary)', letterSpacing: '-1px', marginBottom: '4px' }}>6</div>
+          <div style={{ fontSize: '32px', fontWeight: 900, color: 'var(--text-primary)', letterSpacing: '-1px', marginBottom: '4px' }}>
+            {stats.files?.total - stats.files?.approved || 0}
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
-            <span style={{ color: 'var(--text-secondary)' }}>Need your attention</span>
+            <span style={{ color: 'var(--text-secondary)' }}>Awaiting client feedback</span>
           </div>
         </div>
 
@@ -348,52 +369,41 @@ export default function AnalyticsPage() {
             <Trophy size={16} color="#D4A017" />
             <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '0.5px' }}>TOP CLIENTS</span>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {topClients.map((client, idx) => (
-              <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
-                <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{idx + 1}. {client.name}</span>
-                <span style={{ color: 'var(--text-primary)', fontWeight: 800 }}>{client.amount}</span>
-              </div>
-            ))}
-          </div>
+          {topClients.length === 0 ? (
+            <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
+              No payments received yet.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {topClients.map((client: any, i: number) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13.5px', borderBottom: '1px solid var(--border-light)', paddingBottom: '8px' }}>
+                  <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{client.name}</span>
+                  <span style={{ fontWeight: 700, color: 'var(--accent)' }}>{client.amount}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Top Projects */}
+        {/* AI Action Insights */}
         <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '20px', boxShadow: 'var(--shadow-sm)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-            <Briefcase size={16} color="#D4A017" />
-            <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '0.5px' }}>TOP PROJECTS</span>
+            <BarChart2 size={16} color="#D4A017" />
+            <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '0.5px' }}>ACTION INSIGHTS</span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {topProjects.map((project, idx) => (
-              <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
-                <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{idx + 1}. {project.name}</span>
-                <span style={{ color: 'var(--text-primary)', fontWeight: 800 }}>{project.amount}</span>
-              </div>
-            ))}
+            {dynamicInsights.map((ins, i) => {
+              const IconComp = ins.icon;
+              return (
+                <div key={i} style={{ display: 'flex', gap: '10px', padding: '12px', background: ins.bg, borderRadius: 'var(--radius-md)', border: `1px solid ${ins.color}25` }}>
+                  <IconComp size={16} color={ins.color} style={{ flexShrink: 0, marginTop: '2px' }} />
+                  <span style={{ fontSize: '12.5px', color: 'var(--text-primary)', lineHeight: '1.4' }}>{ins.text}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
 
-      </div>
-
-      {/* Auto-Generated Insights */}
-      <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '20px', boxShadow: 'var(--shadow-sm)', marginBottom: '40px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-          <BarChart2 size={16} color="#10B981" />
-          <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '0.5px' }}>INSIGHTS</span>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {dynamicInsights.map((insight, idx) => {
-            const Icon = insight.icon;
-            return (
-              <div key={idx} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', fontSize: '14px', color: 'var(--text-primary)' }}>
-                <Icon size={16} color={insight.color} style={{ marginTop: '2px', flexShrink: 0 }} fill={insight.bg} />
-                <span>{insight.text}</span>
-              </div>
-            );
-          })}
-        </div>
       </div>
 
     </div>

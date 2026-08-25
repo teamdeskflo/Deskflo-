@@ -29,12 +29,31 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false });
 
     if (clientId) query = query.eq('client_id', clientId);
-    if (status)   query = query.eq('status', status);
+    if (status) {
+      let dbFilterStatus = 'active';
+      if (status === 'approved') dbFilterStatus = 'completed';
+      else if (status === 'pending') dbFilterStatus = 'on_hold';
+      else if (status === 'progress' || status === 'review') dbFilterStatus = 'active';
+      query = query.eq('status', dbFilterStatus);
+    }
 
     const { data, error } = await query;
     if (error) throw error;
 
-    return NextResponse.json(data);
+    // Map database status back to frontend status
+    const formatted = (data || []).map((p: any) => {
+      let frontendStatus = 'progress';
+      if (p.status === 'completed') frontendStatus = 'approved';
+      else if (p.status === 'on_hold' || p.status === 'cancelled') frontendStatus = 'pending';
+      else if (p.status === 'active') {
+        const hasUnapproved = Array.isArray(p.files) && p.files.some((f: any) => !f.is_approved);
+        if (hasUnapproved) frontendStatus = 'review';
+        else frontendStatus = 'progress';
+      }
+      return { ...p, status: frontendStatus };
+    });
+
+    return NextResponse.json(formatted);
   } catch (err: unknown) {
     const msg = (err as Error).message;
     return NextResponse.json({ error: msg }, { status: msg === 'Unauthorized' ? 401 : 500 });
@@ -63,9 +82,24 @@ export async function POST(request: NextRequest) {
 
     if (!client) return NextResponse.json({ error: 'Client not found' }, { status: 404 });
 
+    const cleanDeadline = (deadline && typeof deadline === 'string' && deadline.trim() !== '') ? deadline : null;
+    const cleanBudget = (budget !== undefined && budget !== null && budget !== '') ? parseFloat(budget) : null;
+
+    let dbStatus = 'active';
+    if (status === 'approved') dbStatus = 'completed';
+    else if (status === 'pending') dbStatus = 'on_hold';
+    else if (status === 'progress' || status === 'review') dbStatus = 'active';
+
     const { data, error } = await supabase
       .from('projects')
-      .insert({ client_id, name, description, status: status || 'active', budget, deadline })
+      .insert({ 
+        client_id, 
+        name, 
+        description, 
+        status: dbStatus, 
+        budget: cleanBudget, 
+        deadline: cleanDeadline 
+      })
       .select()
       .single();
 

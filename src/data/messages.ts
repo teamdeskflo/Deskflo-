@@ -58,14 +58,14 @@ export const INITIAL_MESSAGES: MessageTemplate[] = [
   { id: 'm29', category: 'Project Status Updates', title: 'Project On Hold', content: "⏸️ Project \"{project_name}\" is on hold.\nWaiting for: {required_from_client}\nResume as soon as I receive it." },
 
   // CATEGORY 5: Invoices & Payments
-  { id: 'm30', category: 'Invoices & Payments', title: 'Send Invoice with Payment Link', content: "💰 Invoice #{invoice_no} for ₹{amount} is ready.\nPay here: {payment_link}\nDue date: {due_date}\nThank you for your business!" },
-  { id: 'm31', category: 'Invoices & Payments', title: 'Payment Reminder (3 Days Before Due)', content: "Friendly reminder: Invoice #{invoice_no} of ₹{amount}\nis due on {due_date}.\nPay here: {payment_link}" },
-  { id: 'm32', category: 'Invoices & Payments', title: 'Payment Reminder (Due Date)', content: "Today is the due date for Invoice #{invoice_no} (₹{amount}).\nPlease pay today: {payment_link}" },
-  { id: 'm33', category: 'Invoices & Payments', title: 'Overdue Payment Reminder (7 Days)', content: "⚠️ Invoice #{invoice_no} (₹{amount}) is overdue by 7 days.\nPlease clear at earliest: {payment_link}\nLate fees may apply after {late_fee_date}." },
-  { id: 'm34', category: 'Invoices & Payments', title: 'Overdue Payment Reminder (15 Days)', content: "URGENT: Invoice #{invoice_no} of ₹{amount} is overdue by 15 days.\nFinal reminder before escalation.\nPay now: {payment_link}" },
+  { id: 'm30', category: 'Invoices & Payments', title: 'Send Invoice', content: "💰 Invoice #{invoice_no} for ₹{amount} is ready.\nDue date: {due_date}\nThank you for your business!" },
+  { id: 'm31', category: 'Invoices & Payments', title: 'Payment Reminder (3 Days Before Due)', content: "Friendly reminder: Invoice #{invoice_no} of ₹{amount}\nis due on {due_date}." },
+  { id: 'm32', category: 'Invoices & Payments', title: 'Payment Reminder (Due Date)', content: "Today is the due date for Invoice #{invoice_no} (₹{amount}).\nPlease pay today." },
+  { id: 'm33', category: 'Invoices & Payments', title: 'Overdue Payment Reminder (7 Days)', content: "⚠️ Invoice #{invoice_no} (₹{amount}) is overdue by 7 days.\nPlease clear at earliest.\nLate fees may apply after {late_fee_date}." },
+  { id: 'm34', category: 'Invoices & Payments', title: 'Overdue Payment Reminder (15 Days)', content: "URGENT: Invoice #{invoice_no} of ₹{amount} is overdue by 15 days.\nFinal reminder before escalation." },
   { id: 'm35', category: 'Invoices & Payments', title: 'Payment Received', content: "✅ Payment of ₹{amount} received for Invoice #{invoice_no}.\nThank you! Receipt attached: {receipt_link}" },
-  { id: 'm36', category: 'Invoices & Payments', title: 'Partial Payment Received', content: "Received ₹{amount_paid} for Invoice #{invoice_no}.\nRemaining balance: ₹{balance_due}.\nPay remaining: {payment_link}" },
-  { id: 'm37', category: 'Invoices & Payments', title: 'Resend Invoice', content: "Here's your invoice again:\nInvoice #{invoice_no} - ₹{amount}\nPay here: {payment_link}\nDue: {due_date}" },
+  { id: 'm36', category: 'Invoices & Payments', title: 'Partial Payment Received', content: "Received ₹{amount_paid} for Invoice #{invoice_no}.\nRemaining balance: ₹{balance_due}." },
+  { id: 'm37', category: 'Invoices & Payments', title: 'Resend Invoice', content: "Here's your invoice again:\nInvoice #{invoice_no} - ₹{amount}\nDue: {due_date}" },
 
   // CATEGORY 6: Post-Project & Follow-ups
   { id: 'm38', category: 'Post-Project & Follow-ups', title: 'Thank You Message', content: "Thank you for working with me on {project_name}!\nIt was a pleasure.\nLooking forward to our next project together." },
@@ -77,7 +77,7 @@ export const INITIAL_MESSAGES: MessageTemplate[] = [
   // CATEGORY 7: Client Questions & Objections
   { id: 'm43', category: 'Client Questions & Objections', title: 'Client Asks "Why should I pay?"', content: "You're paying for:\n✓ Professional quality work\n✓ Timely delivery\n✓ Unlimited revisions until approval\n✓ Post-delivery support for {days} days\n✓ Legal proof of approval\nFair price for guaranteed results." },
   { id: 'm44', category: 'Client Questions & Objections', title: 'Client Asks for Discount', content: "I understand budget concerns.\nI can offer {discount_percentage}% off if you:\n- Pay 50% upfront\n- Or refer 2 clients to me\nLet me know what works." },
-  { id: 'm45', category: 'Client Questions & Objections', title: 'Client Says "I\'ll pay later"', content: "I completely understand.\nJust to clarify, final files will be shared after payment.\nInvoice link is active: {payment_link}\nLet me know when you're ready." },
+  { id: 'm45', category: 'Client Questions & Objections', title: 'Client Says "I\'ll pay later"', content: "I completely understand.\nJust to clarify, final files will be shared after payment.\nLet me know when you're ready." },
   { id: 'm46', category: 'Client Questions & Objections', title: 'Client Says "I never approved that"', content: "As per our records, {file_name} was approved by you on {approval_date}\nfrom IP address {ip_address}.\nScreenshot attached for reference: {screenshot_link}\nPlease check and confirm." },
   { id: 'm47', category: 'Client Questions & Objections', title: 'Client Says "Too expensive compared to others"', content: "My pricing reflects the quality and reliability I deliver.\nCheaper options often mean:\n- No revisions\n- Delayed delivery\n- No legal proof\n- No post-project support\nYou get what you pay for." },
   { id: 'm48', category: 'Client Questions & Objections', title: 'Client Says "Can you do it faster?"', content: "I can deliver faster for an additional rush fee of ₹{rush_fee}.\nOriginal timeline: {original_days} days\nRush timeline: {rush_days} days\nLet me know if you want to proceed." },
@@ -85,16 +85,16 @@ export const INITIAL_MESSAGES: MessageTemplate[] = [
   { id: 'm50', category: 'Client Questions & Objections', title: 'Client Wants to Cancel Mid-Project', content: "Sorry to hear you want to cancel.\nAs per policy, work completed so far is billable.\nCompleted: {completed_percentage}%\nAmount due: ₹{amount_due}\nLet me know how you want to proceed." },
 
   // CATEGORY 8: Payment Confirmation & Follow-up
-  { id: 'm51', category: 'Payment Confirmation & Follow-up', title: 'Payment Link Expired', content: "Your payment link for Invoice #{invoice_no} has expired.\nHere's a new link: {payment_link}\nValid for {days} days." },
+  { id: 'm51', category: 'Payment Confirmation & Follow-up', title: 'Payment Reminder Follow-up', content: "This is a follow-up for your payment for Invoice #{invoice_no}." },
   { id: 'm52', category: 'Payment Confirmation & Follow-up', title: 'Payment Success Confirmation', content: "We've received your payment of ₹{amount} for Invoice #{invoice_no}.\nPayment ID: {transaction_id}\nThank you! Your files are ready: {file_link}" },
-  { id: 'm53', category: 'Payment Confirmation & Follow-up', title: 'Payment Failed (Client tried but failed)', content: "Your payment of ₹{amount} for Invoice #{invoice_no} failed.\nPossible reasons: insufficient balance, bank issue.\nPlease try again: {payment_link}\nOr use different UPI app." },
+  { id: 'm53', category: 'Payment Confirmation & Follow-up', title: 'Payment Failed (Client tried but failed)', content: "Your payment of ₹{amount} for Invoice #{invoice_no} failed.\nPossible reasons: insufficient balance, bank issue.\nPlease try again or use different UPI app." },
   { id: 'm54', category: 'Payment Confirmation & Follow-up', title: 'UPI ID Request', content: "My UPI ID: {freelancer_upi_id}\nPlease send ₹{amount} with this note: \"{invoice_number}\"\nSend screenshot after payment: {screenshot_upload_link}" },
   { id: 'm55', category: 'Payment Confirmation & Follow-up', title: 'Request Bank Transfer Details', content: "Bank transfer details:\nAccount Name: {freelancer_name}\nBank: {bank_name}\nAccount Number: {account_number}\nIFSC: {ifsc_code}\nUPI ID: {freelancer_upi_id}\nSend screenshot after transfer: {screenshot_upload_link}" },
 
   // CATEGORY 9: WhatsApp Link Generation
   { id: 'm56', category: 'WhatsApp Link Generation', title: 'Send Deskflo Link for Non-Dashboard Client', content: "{freelancer_name} shared a file with you:\n📁 {file_name}\n✅ Approve: {approval_link}\n👁️ View: {file_link}" },
   { id: 'm57', category: 'WhatsApp Link Generation', title: 'Send Deskflo Link for Portal Client', content: "New update from {freelancer_name}:\n📁 {file_name} is ready for review.\n✅ Approve: {approval_link}\n📋 View all: {portal_link}" },
-  { id: 'm58', category: 'WhatsApp Link Generation', title: 'Send Invoice Link Only', content: "Invoice #{invoice_no} from {freelancer_name}\nAmount: ₹{amount}\nDue: {due_date}\n💰 Pay: {payment_link}" },
+  { id: 'm58', category: 'WhatsApp Link Generation', title: 'Send Invoice Link Only', content: "Invoice #{invoice_no} from {freelancer_name}\nAmount: ₹{amount}\nDue: {due_date}" },
 
   // CATEGORY 10: Context-Specific Professional Notes
   { id: 'm59', category: 'Context-Specific Professional Notes', title: 'Out of Office / Vacation', content: "Thanks for your message. I'm currently out of office until {return_date}.\nFor urgent matters, contact: {backup_contact}\nI'll respond to all messages on {return_date}." },

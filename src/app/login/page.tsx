@@ -47,11 +47,7 @@ export default function LoginPage() {
       }} className="auth-panel">
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '48px' }}>
-            <div style={{
-              width: '36px', height: '36px', borderRadius: '10px',
-              background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '18px', fontWeight: 900, color: '#111',
-            }}>D</div>
+            <img src="/deskflo.png" alt="Deskflo Logo" style={{ height: '32px', width: 'auto', objectFit: 'contain' }} />
             <span style={{ fontSize: '20px', fontWeight: 800, color: 'white', letterSpacing: '-0.5px' }}>Deskflo</span>
           </div>
           <h2 style={{ fontSize: '28px', fontWeight: 800, color: 'white', lineHeight: 1.3, marginBottom: '16px' }}>
@@ -93,11 +89,7 @@ export default function LoginPage() {
         <div style={{ width: '100%', maxWidth: '400px' }}>
           {/* Mobile logo */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '40px' }}>
-            <div style={{
-              width: '32px', height: '32px', borderRadius: '8px',
-              background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '16px', fontWeight: 900, color: '#111',
-            }}>D</div>
+            <img src="/deskflo.png" alt="Deskflo Logo" style={{ height: '32px', width: 'auto', objectFit: 'contain' }} />
             <span style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.5px' }}>Deskflo</span>
           </div>
 

@@ -13,12 +13,6 @@ type Notification = {
   text: React.ReactNode;
 };
 
-const INITIAL_NOTIFICATIONS: Notification[] = [
-  { id: '1', text: <><strong style={{ color: 'var(--text-primary)' }}>Priya Mehta</strong> viewed Homepage_v3.fig</> },
-  { id: '2', text: <><strong style={{ color: 'var(--text-primary)' }}>Invoice INV-001</strong> was paid.</> },
-  { id: '3', text: <><strong style={{ color: 'var(--text-primary)' }}>System:</strong> Trial expires in 7 days.</> },
-];
-
 export default function TopNav() {
   const user   = useUser();
   const router = useRouter();
@@ -27,8 +21,95 @@ export default function TopNav() {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   
-  const [notifications, setNotifications] = useState<Notification[]>(INITIAL_NOTIFICATIONS);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    async function loadNotifications() {
+      try {
+        // 1. Fetch activities
+        const actRes = await fetch('/api/activities');
+        const actData = await actRes.json().catch(() => []);
+
+        // 2. Fetch approval logs
+        const logRes = await fetch('/api/approval-logs');
+        const logData = await logRes.json().catch(() => []);
+
+        const combinedList: { timestamp: number; node: React.ReactNode; id: string }[] = [];
+
+        // Add activities
+        if (Array.isArray(actData)) {
+          actData.forEach((a: any) => {
+            const time = new Date(a.created_at).getTime();
+            let text: React.ReactNode = '';
+            if (a.action === 'file_uploaded') {
+              text = <><strong style={{ color: 'var(--text-primary)' }}>File Uploaded:</strong> {a.metadata?.file_name || 'Project file'}</>;
+            } else if (a.action === 'client_created') {
+              text = <><strong style={{ color: 'var(--text-primary)' }}>New Client:</strong> {a.metadata?.client_name || 'Client'}</>;
+            } else if (a.action === 'project_created') {
+              text = <><strong style={{ color: 'var(--text-primary)' }}>New Project:</strong> {a.metadata?.project_name}</>;
+            } else if (a.action === 'invoice_created') {
+              text = <><strong style={{ color: 'var(--text-primary)' }}>Invoice Generated:</strong> {a.metadata?.invoice_number} (₹{Number(a.metadata?.amount || 0).toLocaleString('en-IN')})</>;
+            } else if (a.action === 'invoice_paid') {
+              text = <><strong style={{ color: 'var(--text-primary)' }}>Invoice {a.metadata?.invoice_number}</strong> was paid.</>;
+            } else {
+              text = <>{a.action.replace(/_/g, ' ')}</>;
+            }
+            combinedList.push({ id: a.id, timestamp: time, node: text });
+          });
+        }
+
+        // Add approval logs
+        if (Array.isArray(logData)) {
+          logData.forEach((l: any) => {
+            const time = new Date(l.created_at).getTime();
+            const clientName = l.files?.projects?.clients?.name || 'Client';
+            const fileName = l.files?.file_name || 'asset';
+            let text: React.ReactNode = '';
+            if (l.action === 'approved') {
+              text = <><strong style={{ color: 'var(--text-primary)' }}>{clientName}</strong> approved {fileName}</>;
+            } else if (l.action === 'rejected') {
+              text = <><strong style={{ color: 'var(--text-primary)' }}>{clientName}</strong> requested revisions on {fileName}</>;
+            } else {
+              text = <><strong style={{ color: 'var(--text-primary)' }}>{clientName}</strong> viewed {fileName}</>;
+            }
+            combinedList.push({ id: l.id, timestamp: time, node: text });
+          });
+        }
+
+        // Sort by timestamp descending
+        combinedList.sort((a, b) => b.timestamp - a.timestamp);
+
+        // Convert to Notification type
+        const formatted: Notification[] = combinedList.slice(0, 8).map(item => ({
+          id: item.id,
+          text: item.node
+        }));
+
+        // Add dynamic System trial expiry notification if in trial mode
+        if (user && user.subscription_status === 'trial' && user.trial_ends_at) {
+          const trialEnd = new Date(user.trial_ends_at).getTime();
+          const daysRemaining = Math.max(0, Math.ceil((trialEnd - Date.now()) / (1000 * 60 * 60 * 24)));
+          if (daysRemaining > 0 && daysRemaining <= 7) {
+            formatted.unshift({
+              id: 'trial-expiry-notif',
+              text: <><strong style={{ color: 'var(--text-primary)' }}>System:</strong> Trial expires in {daysRemaining} days.</>
+            });
+          }
+        }
+
+        setNotifications(formatted);
+      } catch (err) {
+        console.error('Error loading topnav notifications:', err);
+      }
+    }
+
+    if (user) {
+      loadNotifications();
+      const interval = setInterval(loadNotifications, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [user]);
 
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
@@ -97,7 +178,7 @@ export default function TopNav() {
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
         <Image src="/deskflo.png" alt="Deskflo" width={28} height={24} />
         <span style={{ fontWeight: 800, fontSize: '16px', letterSpacing: '-0.3px', color: 'var(--text-primary)' }}>
-          DESKFL<span style={{ color: 'var(--accent)' }}>O</span>
+          DESKFLO
         </span>
       </div>
 

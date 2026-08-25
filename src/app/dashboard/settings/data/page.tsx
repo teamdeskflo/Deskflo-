@@ -16,7 +16,7 @@ export default function SettingsDataPrivacyPage() {
   });
 
   const handleDownloadAll = () => {
-    alert("Exporting data to ZIP file...\n\nIn a real app, this would trigger a background job to compile all user data into a downloadable archive.");
+    window.location.href = '/api/export';
   };
 
   const confirmDelete = () => {

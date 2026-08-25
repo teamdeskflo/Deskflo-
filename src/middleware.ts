@@ -1,9 +1,46 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import { ADMIN_SESSION_COOKIE } from '@/lib/admin/auth';
 
 export async function middleware(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request });
+  const { pathname } = request.nextUrl;
 
+  // Forward pathname so layout server components can detect the current route
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-pathname', pathname);
+
+  let supabaseResponse = NextResponse.next({
+    request: {
+      headers: requestHeaders,
+    },
+  });
+  supabaseResponse.headers.set('x-pathname', pathname);
+
+  // ── Admin route protection ─────────────────────────────────────────────
+  // /admin/* is protected except /admin/login
+  if (pathname.startsWith('/admin') && pathname !== '/admin/login') {
+    const token = request.cookies.get(ADMIN_SESSION_COOKIE)?.value;
+
+    if (!token) {
+      const loginUrl = request.nextUrl.clone();
+      loginUrl.pathname = '/admin/login';
+      return NextResponse.redirect(loginUrl);
+    }
+  }
+
+  // Redirect /admin root → /admin/dashboard
+  if (pathname === '/admin') {
+    const dash = request.nextUrl.clone();
+    dash.pathname = '/admin/dashboard';
+    return NextResponse.redirect(dash);
+  }
+
+  // ── Skip Supabase auth for /admin/* routes (admin uses its own cookie auth) ──
+  if (pathname.startsWith('/admin') || pathname.startsWith('/api/admin')) {
+    return supabaseResponse;
+  }
+
+  // ── Freelancer / Supabase auth ─────────────────────────────────────────
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -12,7 +49,10 @@ export async function middleware(request: NextRequest) {
         getAll() { return request.cookies.getAll(); },
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-          supabaseResponse = NextResponse.next({ request });
+          supabaseResponse = NextResponse.next({
+            request: { headers: requestHeaders },
+          });
+          supabaseResponse.headers.set('x-pathname', pathname);
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
           );
@@ -21,12 +61,14 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // Refresh session — IMPORTANT: do not remove this
-  const { data: { user } } = await supabase.auth.getUser();
+  let user = null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
+  } catch {
+    return supabaseResponse;
+  }
 
-  const { pathname } = request.nextUrl;
-
-  // Protected routes: /dashboard/* — redirect to /login if not authenticated
   if (pathname.startsWith('/dashboard') && !user) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = '/login';
@@ -34,7 +76,6 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // If user is logged in and tries to visit /login or /signup, send to dashboard
   if ((pathname === '/login' || pathname === '/signup') && user) {
     const dashboardUrl = request.nextUrl.clone();
     dashboardUrl.pathname = '/dashboard';

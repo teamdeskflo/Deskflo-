@@ -13,18 +13,24 @@ export type User = {
   subscription_status?: SubscriptionStatus;
   /** Exact date this user's trial started (set once at signup) */
   trial_starts_at?: Date;
-  /** Exact date this user's trial ends (set once at signup, e.g. +14 days) */
+  /** Exact date this user's trial ends (set once at signup, e.g. +7 days) */
   trial_ends_at?: Date;
   /** If paying, the date of next recurring charge */
   next_billing_date?: Date;
   /** Monthly or annual */
   billing_plan?: 'monthly' | 'annual';
+  payment_method_added?: boolean;
+  payment_method_display?: string;
+  profession?: string;
+  business_address?: string;
+  gst_registered?: boolean;
+  gstin?: string;
 };
 
-// Simulates a user who signed up 9 days ago on a 14-day trial.
+// Simulates a user who signed up 4 days ago on a 7-day trial.
 // TODO: Replace with real Supabase session data via NextAuth/server component.
-const TRIAL_START = new Date(Date.now() - 9 * 24 * 60 * 60 * 1000);  // 9 days ago
-const TRIAL_END   = new Date(TRIAL_START.getTime() + 14 * 24 * 60 * 60 * 1000); // 14-day trial
+const TRIAL_START = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000);  // 4 days ago
+const TRIAL_END   = new Date(TRIAL_START.getTime() + 7 * 24 * 60 * 60 * 1000); // 7-day trial
 
 const MOCK_USER: User = {
   name: 'Rahul Sharma',
@@ -66,7 +72,7 @@ export function trialDaysRemaining(trial_ends_at?: Date): number {
 
 /**
  * Returns how far through the trial the user is, as a 0–100 percentage.
- * e.g. day 9 of 14 = ~64%
+ * e.g. day 4 of 7 = ~57%
  */
 export function trialProgressPercent(trial_starts_at?: Date, trial_ends_at?: Date): number {
   if (!trial_starts_at || !trial_ends_at) return 0;

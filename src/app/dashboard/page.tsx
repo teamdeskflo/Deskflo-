@@ -6,81 +6,166 @@ import {
   TrendingUp, Eye, AlertCircle, Phone, Mail, X
 } from 'lucide-react';
 import { useUser } from '@/lib/auth-context';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { INITIAL_MESSAGES } from '@/data/messages';
 
-// ── Data ────────────────────────────────────────────────────
-const metrics = [
-  {
-    label: 'This Month Revenue',
-    value: '₹45,000',
-    Icon: IndianRupee,
-    accentColor: '#D4A017',
-    accentBg: '#FDF8EC',
-  },
-  {
-    label: 'Pending Approvals',
-    value: '3',
-    Icon: Clock,
-    accentColor: '#F59E0B',
-    accentBg: '#FFFBEB',
-  },
-  {
-    label: 'Unpaid Invoices',
-    value: '2',
-    Icon: Receipt,
-    accentColor: '#EF4444',
-    accentBg: '#FEF2F2',
-  },
-  {
-    label: 'Approval Rate',
-    value: '87%',
-    Icon: TrendingUp,
-    accentColor: '#10B981',
-    accentBg: '#ECFDF5',
-  },
-];
+// ── Types ──────────────────────────────────────────────────
+type Metric = {
+  label: string;
+  value: string;
+  Icon: any;
+  accentColor: string;
+  accentBg: string;
+};
 
-const pendingApprovals = [
-  { file: 'Homepage_v3.fig',       client: 'Priya Mehta',   status: 'unseen' },
-  { file: 'Brand_Kit_Final.pdf',   client: 'Arjun Singh',   status: 'seen'   },
-  { file: 'Social_Pack_May.zip',   client: 'Neha Kapoor',   status: 'unseen' },
-];
+type PendingApproval = {
+  fileId: string;
+  file: string;
+  client: string;
+};
 
-const unpaidInvoices = [
-  { id: 'INV-001', client: 'Rahul Sharma', amount: '₹12,000' },
-  { id: 'INV-002', client: 'Priya Patel',  amount: '₹6,400'  },
-];
+type UnpaidInvoice = {
+  id: string;
+  client: string;
+  amount: string;
+};
 
-const recentActivity = [
-  { label: 'Approved in Deskflo',  sub: 'Homepage_v3.fig',      time: '12:33 am', Icon: CheckCircle2, color: '#10B981' },
-  { label: 'Paid in Deskflo',      sub: 'INV-001 — ₹12,000',    time: '11:35 am', Icon: IndianRupee,  color: '#10B981' },
-  { label: 'Uploaded on Deskflo',  sub: 'Social_Pack_May.zip',  time: '11:45 pm', Icon: Upload,       color: '#6366F1' },
-  { label: 'Viewed in Deskflo',    sub: 'SEO_Report_Q2.pdf',    time: '17:29 pm', Icon: Eye,          color: 'var(--text-muted)' },
-];
+type Activity = {
+  label: string;
+  sub: string;
+  time: string;
+  Icon: any;
+  color: string;
+};
 
-const quickActions = [
-  { label: 'Add Client',       Icon: UserPlus,      href: '/dashboard/clients'  },
-  { label: 'Upload File',      Icon: Upload,        href: '/dashboard/files'    },
-  { label: 'Create Invoice',   Icon: Receipt,       href: '/dashboard/invoices' },
-];
-
-// ── Page ─────────────────────────────────────────────────────
 export default function DashboardOverviewPage() {
   const user = useUser();
-  const firstName = user.name.split(' ')[0];
+  const firstName = user?.name ? user.name.split(' ')[0] : 'Freelancer';
   const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long' });
+
+  // ── States ────────────────────────────────────────────────
+  const [metrics, setMetrics] = useState<Metric[]>([
+    { label: 'This Month Revenue', value: '₹0', Icon: IndianRupee, accentColor: '#D4A017', accentBg: 'var(--border-light)' },
+    { label: 'Pending Approvals', value: '0', Icon: Clock, accentColor: '#F59E0B', accentBg: 'var(--border-light)' },
+    { label: 'Unpaid Invoices', value: '0', Icon: Receipt, accentColor: '#EF4444', accentBg: 'var(--border-light)' },
+    { label: 'Approval Rate', value: '0%', Icon: TrendingUp, accentColor: '#10B981', accentBg: 'var(--border-light)' },
+  ]);
+
+  const [pendingApprovals, setPendingApprovals] = useState<PendingApproval[]>([]);
+  const [unpaidInvoices, setUnpaidInvoices] = useState<UnpaidInvoice[]>([]);
+  const [recentActivity, setRecentActivity] = useState<Activity[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const [reminderContext, setReminderContext] = useState<{ type: 'approval' | 'invoice', client: string, itemName: string } | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [messageBody, setMessageBody] = useState('');
 
-  // Open the modal and set initial templates
+  // ── Fetch Dashboard Data ──────────────────────────────────
+  useEffect(() => {
+    async function loadDashboardData() {
+      try {
+        setLoading(true);
+        // Fetch analytics
+        const analyticsReq = await fetch('/api/analytics');
+        const analytics = await analyticsReq.json();
+
+        // Fetch pending files
+        const filesReq = await fetch('/api/files');
+        const files = await filesReq.json();
+        const pendingFiles = Array.isArray(files)
+          ? files.filter((f: any) => !f.is_approved).slice(0, 3).map((f: any) => ({
+            fileId: f.id,
+            file: f.file_name,
+            client: f.projects?.clients?.name || 'Client',
+          }))
+          : [];
+
+        // Fetch unpaid invoices
+        const invoicesReq = await fetch('/api/invoices');
+        const invoices = await invoicesReq.json();
+        const unpaid = Array.isArray(invoices)
+          ? invoices.filter((i: any) => i.status !== 'paid').slice(0, 3).map((i: any) => ({
+            id: i.invoice_number,
+            client: i.clients?.name || 'Client',
+            amount: `₹${Number(i.total_amount).toLocaleString('en-IN')}`,
+          }))
+          : [];
+
+        // Fetch recent activities
+        const actReq = await fetch('/api/activities');
+        const activities = await actReq.json();
+        const recent = Array.isArray(activities)
+          ? activities.slice(0, 4).map((a: any) => {
+            let label = 'Activity logged';
+            let sub = '';
+            let Icon = Clock;
+            let color = 'var(--text-muted)';
+
+            if (a.action === 'file_uploaded') {
+              label = 'Uploaded file';
+              sub = a.metadata?.file_name || 'Project File';
+              Icon = Upload;
+              color = '#6366F1';
+            } else if (a.action === 'file_approved') {
+              label = 'Approved file';
+              sub = a.metadata?.file_name || 'Project File';
+              Icon = CheckCircle2;
+              color = '#10B981';
+            } else if (a.action === 'invoice_created') {
+              label = 'Created invoice';
+              sub = a.metadata?.invoice_number || 'INV';
+              Icon = Receipt;
+              color = '#F59E0B';
+            } else if (a.action === 'invoice_paid') {
+              label = 'Paid invoice';
+              sub = `${a.metadata?.invoice_number} — ₹${a.metadata?.amount || '0'}`;
+              Icon = IndianRupee;
+              color = '#10B981';
+            }
+
+            return {
+              label,
+              sub,
+              time: new Date(a.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+              Icon,
+              color,
+            };
+          })
+          : [];
+
+        // Update metrics
+        if (analytics && !analytics.error) {
+          const revVal = `₹${Number(analytics.revenue?.total || 0).toLocaleString('en-IN')}`;
+          const pendingVal = String(analytics.files?.total - analytics.files?.approved || 0);
+          const unpaidVal = String(analytics.invoices?.sent + analytics.invoices?.overdue || 0);
+          const appRateVal = `${analytics.files?.approvalRate || 0}%`;
+
+          setMetrics([
+            { label: 'Total Revenue', value: revVal, Icon: IndianRupee, accentColor: '#D4A017', accentBg: '#FDF8EC' },
+            { label: 'Pending Approvals', value: pendingVal, Icon: Clock, accentColor: '#F59E0B', accentBg: '#FFFBEB' },
+            { label: 'Unpaid Invoices', value: unpaidVal, Icon: Receipt, accentColor: '#EF4444', accentBg: '#FEF2F2' },
+            { label: 'Approval Rate', value: appRateVal, Icon: TrendingUp, accentColor: '#10B981', accentBg: '#ECFDF5' },
+          ]);
+        }
+
+        setPendingApprovals(pendingFiles);
+        setUnpaidInvoices(unpaid);
+        setRecentActivity(recent);
+      } catch (err) {
+        console.error('Error loading dashboard data:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadDashboardData();
+  }, []);
+
+  // ── Open reminder modal ───────────────────────────────────
   const handleOpenReminder = (type: 'approval' | 'invoice', client: string, itemName: string) => {
     setReminderContext({ type, client, itemName });
     const category = type === 'approval' ? 'Approval Requests & Reminders' : 'Invoices & Payments';
     const templates = INITIAL_MESSAGES.filter(m => m.category === category);
-    
+
     if (templates.length > 0) {
       setSelectedTemplateId(templates[0].id);
       let parsedMsg = templates[0].content
@@ -88,7 +173,7 @@ export default function DashboardOverviewPage() {
         .replace(/{freelancer_name}/g, firstName)
         .replace(/{file_name}/g, itemName)
         .replace(/{invoice_number}/g, itemName)
-        .replace(/{amount}/g, type === 'invoice' ? '₹12,000' : ''); // mock amount
+        .replace(/{amount}/g, type === 'invoice' ? '₹12,000' : '');
       setMessageBody(parsedMsg);
     } else {
       setSelectedTemplateId('');
@@ -121,9 +206,15 @@ export default function DashboardOverviewPage() {
     setReminderContext(null);
   };
 
+  const quickActions = [
+    { label: 'Add Client', Icon: UserPlus, href: '/dashboard/clients' },
+    { label: 'Upload File', Icon: Upload, href: '/dashboard/files' },
+    { label: 'Create Invoice', Icon: Receipt, href: '/dashboard/invoices' },
+  ];
+
   return (
     <div style={{ maxWidth: '1100px' }}>
-      
+
       {/* Reminder Modal */}
       {reminderContext && (
         <div style={{
@@ -145,9 +236,9 @@ export default function DashboardOverviewPage() {
               </h2>
               <button onClick={() => setReminderContext(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={18} /></button>
             </div>
-            
+
             <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-              Sending a reminder to <strong>{reminderContext.client}</strong> regarding <span style={{fontFamily: 'monospace'}}>{reminderContext.itemName}</span>.
+              Sending a reminder to <strong>{reminderContext.client}</strong> regarding <span style={{ fontFamily: 'monospace' }}>{reminderContext.itemName}</span>.
             </p>
 
             <div style={{ marginBottom: '16px' }}>
@@ -225,7 +316,7 @@ export default function DashboardOverviewPage() {
             }}>
               <Icon size={17} strokeWidth={2} color={accentColor} />
             </div>
-            <p style={{ fontSize: '22px', fontWeight: 800, color: accentColor, margin: '0 0 4px', letterSpacing: '-0.5px' }}>
+            <p style={{ fontSize: '22px', fontWeight: 800, color: 'var(--text-primary)', margin: '0 0 4px', letterSpacing: '-0.5px' }}>
               {value}
             </p>
             <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>{label}</p>
@@ -242,43 +333,53 @@ export default function DashboardOverviewPage() {
           borderRadius: 'var(--radius-lg)', overflow: 'hidden', boxShadow: 'var(--shadow-sm)',
         }}>
           <div style={{
-            background: '#FDF3DC', borderBottom: '1px solid #F5E0A0',
+            background: 'var(--border-light)', borderBottom: '1px solid var(--border)',
             padding: '11px 18px', display: 'flex', alignItems: 'center', gap: '8px',
           }}>
-            <AlertCircle size={14} strokeWidth={2} color="#D4A017" />
-            <span style={{ fontSize: '12px', fontWeight: 700, color: '#92700A', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            <AlertCircle size={14} strokeWidth={2} color="var(--text-muted)" />
+            <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
               Pending Approvals ({pendingApprovals.length})
             </span>
           </div>
-          {pendingApprovals.map((item, i) => (
-            <div key={i} style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '12px 18px',
-              borderBottom: i < pendingApprovals.length - 1 ? '1px solid var(--border-light)' : 'none',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{
-                  width: '30px', height: '30px', borderRadius: 'var(--radius-sm)',
-                  background: 'var(--content-bg)', border: '1px solid var(--border)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <Paperclip size={13} strokeWidth={1.8} color="var(--text-muted)" />
-                </div>
-                <div>
-                  <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 1px' }}>{item.file}</p>
-                  <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: 0 }}>{item.client}</p>
-                </div>
-              </div>
-              <button onClick={() => handleOpenReminder('approval', item.client, item.file)} style={{
-                fontSize: '12px', fontWeight: 500, color: 'var(--text-secondary)',
-                background: 'transparent', border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-sm)', padding: '5px 10px', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: '4px',
-              }}>
-                Send Reminder →
-              </button>
+
+          {loading ? (
+            <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>Loading...</div>
+          ) : pendingApprovals.length === 0 ? (
+            <div style={{ padding: '40px 18px', textAlign: 'center', color: 'var(--text-muted)' }}>
+              <p style={{ fontSize: '13px', fontWeight: 600, margin: '0 0 4px', color: 'var(--text-secondary)' }}>All clear!</p>
+              <p style={{ fontSize: '11.5px', margin: 0 }}>No pending file approvals.</p>
             </div>
-          ))}
+          ) : (
+            pendingApprovals.map((item, i) => (
+              <div key={i} style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '12px 18px',
+                borderBottom: i < pendingApprovals.length - 1 ? '1px solid var(--border-light)' : 'none',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{
+                    width: '30px', height: '30px', borderRadius: 'var(--radius-sm)',
+                    background: 'var(--content-bg)', border: '1px solid var(--border)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <Paperclip size={13} strokeWidth={1.8} color="var(--text-muted)" />
+                  </div>
+                  <div>
+                    <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 1px' }}>{item.file}</p>
+                    <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: 0 }}>{item.client}</p>
+                  </div>
+                </div>
+                <button onClick={() => handleOpenReminder('approval', item.client, item.file)} style={{
+                  fontSize: '12px', fontWeight: 500, color: 'var(--text-secondary)',
+                  background: 'transparent', border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-sm)', padding: '5px 10px', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: '4px',
+                }}>
+                  Send Reminder →
+                </button>
+              </div>
+            ))
+          )}
         </div>
 
         {/* Unpaid Invoices */}
@@ -287,33 +388,43 @@ export default function DashboardOverviewPage() {
           borderRadius: 'var(--radius-lg)', overflow: 'hidden', boxShadow: 'var(--shadow-sm)',
         }}>
           <div style={{
-            background: '#FDF3DC', borderBottom: '1px solid #F5E0A0',
+            background: 'var(--border-light)', borderBottom: '1px solid var(--border)',
             padding: '11px 18px', display: 'flex', alignItems: 'center', gap: '8px',
           }}>
-            <IndianRupee size={14} strokeWidth={2} color="#D4A017" />
-            <span style={{ fontSize: '12px', fontWeight: 700, color: '#92700A', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            <IndianRupee size={14} strokeWidth={2} color="var(--text-muted)" />
+            <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
               Unpaid Invoices ({unpaidInvoices.length})
             </span>
           </div>
-          {unpaidInvoices.map((inv, i) => (
-            <div key={i} style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '13px 18px',
-              borderBottom: i < unpaidInvoices.length - 1 ? '1px solid var(--border-light)' : 'none',
-            }}>
-              <div>
-                <p style={{ fontSize: '13.5px', fontWeight: 700, color: '#D4A017', margin: '0 0 1px' }}>{inv.id}</p>
-                <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: 0 }}>{inv.client} · {inv.amount}</p>
-              </div>
-              <button onClick={() => handleOpenReminder('invoice', inv.client, inv.id)} style={{
-                fontSize: '12px', fontWeight: 500, color: 'var(--text-secondary)',
-                background: 'transparent', border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-sm)', padding: '5px 10px', cursor: 'pointer',
-              }}>
-                Send Reminder →
-              </button>
+
+          {loading ? (
+            <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>Loading...</div>
+          ) : unpaidInvoices.length === 0 ? (
+            <div style={{ padding: '40px 18px', textAlign: 'center', color: 'var(--text-muted)' }}>
+              <p style={{ fontSize: '13px', fontWeight: 600, margin: '0 0 4px', color: 'var(--text-secondary)' }}>All paid up!</p>
+              <p style={{ fontSize: '11.5px', margin: 0 }}>No outstanding invoices.</p>
             </div>
-          ))}
+          ) : (
+            unpaidInvoices.map((inv, i) => (
+              <div key={i} style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '13px 18px',
+                borderBottom: i < unpaidInvoices.length - 1 ? '1px solid var(--border-light)' : 'none',
+              }}>
+                <div>
+                  <p style={{ fontSize: '13.5px', fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 1px' }}>{inv.id}</p>
+                  <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: 0 }}>{inv.client} · {inv.amount}</p>
+                </div>
+                <button onClick={() => handleOpenReminder('invoice', inv.client, inv.id)} style={{
+                  fontSize: '12px', fontWeight: 500, color: 'var(--text-secondary)',
+                  background: 'transparent', border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-sm)', padding: '5px 10px', cursor: 'pointer',
+                }}>
+                  Send Reminder →
+                </button>
+              </div>
+            ))
+          )}
         </div>
       </div>
 
@@ -329,27 +440,36 @@ export default function DashboardOverviewPage() {
             Recent Activity
           </span>
         </div>
-        {recentActivity.map(({ label, sub, time, Icon, color }, i) => (
-          <div key={i} style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '12px 18px',
-            borderBottom: i < recentActivity.length - 1 ? '1px solid var(--border-light)' : 'none',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <div style={{
-                width: '28px', height: '28px', borderRadius: '50%',
-                background: `${color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                <Icon size={13} strokeWidth={2} color={color} />
-              </div>
-              <div>
-                <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)' }}>{label} </span>
-                <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{sub}</span>
-              </div>
-            </div>
-            <span style={{ fontSize: '12px', color: 'var(--text-muted)', flexShrink: 0 }}>{time}</span>
+
+        {loading ? (
+          <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>Loading...</div>
+        ) : recentActivity.length === 0 ? (
+          <div style={{ padding: '40px 18px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
+            No recent activity logs yet. Your uploads, approvals, and invoice actions will appear here!
           </div>
-        ))}
+        ) : (
+          recentActivity.map(({ label, sub, time, Icon, color }, i) => (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '12px 18px',
+              borderBottom: i < recentActivity.length - 1 ? '1px solid var(--border-light)' : 'none',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  width: '28px', height: '28px', borderRadius: '50%',
+                  background: `${color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Icon size={13} strokeWidth={2} color={color} />
+                </div>
+                <div>
+                  <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)' }}>{label} </span>
+                  <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{sub}</span>
+                </div>
+              </div>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)', flexShrink: 0 }}>{time}</span>
+            </div>
+          ))
+        )}
       </div>
 
       {/* Quick Actions */}

@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useUser } from '@/lib/auth-context';
-import { Bell, Info, X } from 'lucide-react';
+import { Bell, Info, X, Check } from 'lucide-react';
 
 export default function SettingsNotificationsPage() {
   const user = useUser();
@@ -24,7 +24,12 @@ export default function SettingsNotificationsPage() {
     invoicePaid: true,
     paymentReminder: true,
   });
-  const [whatsappNumber, setWhatsappNumber] = useState('+91 98765 43210');
+  const [whatsappNumber, setWhatsappNumber] = useState('');
+  const [initialPhone, setInitialPhone] = useState('');
+  const [isVerified, setIsVerified] = useState(false);
+  const [showOtpModal, setShowOtpModal] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [isVerifying, setIsVerifying] = useState(false);
 
   // Auto-Reminders state
   const [reminderSettings, setReminderSettings] = useState({
@@ -34,6 +39,42 @@ export default function SettingsNotificationsPage() {
     overdueReminder7d: true,
   });
   const [reminderTime, setReminderTime] = useState('10:00');
+
+  // Load dynamically from database
+  useEffect(() => {
+    async function loadPreferences() {
+      try {
+        const res = await fetch('/api/settings');
+        const data = await res.json();
+        if (data.profile) {
+          const phone = data.profile.phone || '';
+          setWhatsappNumber(phone);
+          setInitialPhone(phone);
+          if (phone) {
+            // Assume pre-filled signup phone is verified
+            setIsVerified(true);
+          }
+        }
+        if (data.notifications) {
+          setEmailSettings({
+            fileApproval: data.notifications.email_file_approved ?? true,
+            invoicePaid: data.notifications.email_invoice_paid ?? true,
+            weeklyDigest: data.notifications.email_new_project ?? true,
+            marketing: data.notifications.email_task_due ?? false,
+          });
+          setWhatsappSettings({
+            fileApproval: data.notifications.whatsapp_file_approved ?? true,
+            invoicePaid: data.notifications.whatsapp_invoice_paid ?? true,
+            paymentReminder: data.notifications.whatsapp_task_due ?? true,
+          });
+          setReminderTime(data.notifications.reminder_time || '10:00');
+        }
+      } catch (err) {
+        console.error('Error loading notification preferences:', err);
+      }
+    }
+    loadPreferences();
+  }, []);
 
   const handleEmailChange = () => {
     setTempEmail(notifEmail);
@@ -48,11 +89,74 @@ export default function SettingsNotificationsPage() {
   };
 
   const handleVerifyWhatsapp = () => {
-    alert("OTP sent to " + whatsappNumber + ".\n\nIn a real app, this would open an OTP verification modal.");
+    if (!whatsappNumber.trim()) {
+      alert("Please enter a valid WhatsApp phone number first.");
+      return;
+    }
+    setIsVerifying(true);
+    // Simulate sending OTP code
+    setTimeout(() => {
+      setIsVerifying(false);
+      setShowOtpModal(true);
+    }, 800);
   };
 
-  const handleSave = () => {
-    alert("Notification preferences saved successfully!\n\nReady for backend integration.");
+  const handleConfirmOtp = () => {
+    if (otpCode.length !== 6 || isNaN(Number(otpCode))) {
+      alert("Please enter a valid 6-digit verification code.");
+      return;
+    }
+    setIsVerified(true);
+    setShowOtpModal(false);
+    setOtpCode('');
+    alert("WhatsApp number verified successfully!");
+  };
+
+  const handlePhoneInputChange = (val: string) => {
+    setWhatsappNumber(val);
+    // If they modify the input field to something other than the verified phone, reset status
+    if (val !== initialPhone) {
+      setIsVerified(false);
+    } else {
+      setIsVerified(true);
+    }
+  };
+
+  const handleSave = async () => {
+    try {
+      // 1. Save profile phone if updated
+      await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          section: 'profile',
+          phone: whatsappNumber,
+        }),
+      });
+
+      // 2. Save notification preferences
+      await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          section: 'notifications',
+          email_file_approved: emailSettings.fileApproval,
+          email_invoice_paid: emailSettings.invoicePaid,
+          email_new_project: emailSettings.weeklyDigest,
+          email_task_due: emailSettings.marketing,
+          whatsapp_file_approved: whatsappSettings.fileApproval,
+          whatsapp_invoice_paid: whatsappSettings.invoicePaid,
+          whatsapp_task_due: whatsappSettings.paymentReminder,
+          reminder_time: reminderTime,
+        }),
+      });
+
+      setInitialPhone(whatsappNumber);
+      alert("Notification preferences saved successfully!");
+    } catch (err) {
+      console.error('Error saving notification preferences:', err);
+      alert("Failed to save preferences.");
+    }
   };
 
   // Reusable checkbox component for styling consistency
@@ -144,27 +248,48 @@ export default function SettingsNotificationsPage() {
             
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
               <span style={{ fontSize: '14px', color: 'var(--text-primary)' }}>WhatsApp Number:</span>
-              <input 
-                type="text" 
-                value={whatsappNumber}
-                onChange={e => setWhatsappNumber(e.target.value)}
-                style={{
-                  padding: '6px 10px', fontSize: '14px', width: '150px',
-                  border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
-                  outline: 'none', color: 'var(--text-primary)', background: 'var(--card-bg)'
-                }}
-              />
-              <button onClick={handleVerifyWhatsapp} style={{
-                padding: '6px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
-                background: 'var(--border-light)', color: 'var(--text-primary)', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
-              }}>
-                Verify
-              </button>
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <input 
+                  type="text" 
+                  value={whatsappNumber}
+                  onChange={e => handlePhoneInputChange(e.target.value)}
+                  placeholder="e.g. +91 98765 43210"
+                  style={{
+                    padding: '6px 36px 6px 10px', fontSize: '14px', width: '200px',
+                    border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+                    outline: 'none', color: 'var(--text-primary)', background: 'var(--card-bg)'
+                  }}
+                />
+                {isVerified && whatsappNumber.trim() && (
+                  <Check size={16} color="var(--success)" style={{ position: 'absolute', right: '10px' }} />
+                )}
+              </div>
+              
+              {isVerified && whatsappNumber.trim() ? (
+                <span style={{
+                  fontSize: '11px', fontWeight: 700, color: 'var(--success)', 
+                  background: '#ECFDF5', border: '1px solid #10B981',
+                  padding: '3px 8px', borderRadius: '12px'
+                }}>
+                  Verified ✓
+                </span>
+              ) : (
+                <button 
+                  onClick={handleVerifyWhatsapp} 
+                  disabled={isVerifying}
+                  style={{
+                    padding: '6px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
+                    background: 'var(--border-light)', color: 'var(--text-primary)', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
+                  }}
+                >
+                  {isVerifying ? 'Sending...' : 'Verify'}
+                </button>
+              )}
             </div>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
               <Info size={14} color="var(--text-secondary)" style={{ marginTop: '2px', flexShrink: 0 }} />
               <span style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                WhatsApp alerts require a verified number. Click Verify to receive an OTP on your WhatsApp.
+                WhatsApp alerts require a verified number. Enter a new number or use your verified signup number. Click Verify to receive a simulated OTP code.
               </span>
             </div>
           </div>
@@ -220,13 +345,75 @@ export default function SettingsNotificationsPage() {
         </div>
       </div>
 
+      {/* Dynamic OTP Verification Modal */}
+      {showOtpModal && (
+        <div style={{
+          position: 'fixed', inset: 0,
+          background: 'rgba(0,0,0,0.4)', zIndex: 110,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          backdropFilter: 'blur(3px)'
+        }}>
+          <div style={{
+            background: 'var(--card-bg)', width: '380px', borderRadius: 'var(--radius-lg)',
+            boxShadow: 'var(--shadow-lg)', overflow: 'hidden',
+            border: '1px solid var(--border)', padding: '24px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)' }}>Verify WhatsApp Number</h3>
+              <button onClick={() => setShowOtpModal(false)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
+                <X size={18} />
+              </button>
+            </div>
+            
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, margin: '0 0 20px' }}>
+              We sent a simulated 6-digit OTP verification code to <strong>{whatsappNumber}</strong>. Enter the code below to complete verification.
+            </p>
+
+            <div style={{ marginBottom: '24px' }}>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>
+                6-Digit Verification Code
+              </label>
+              <input 
+                type="text" 
+                maxLength={6}
+                placeholder="123456"
+                value={otpCode}
+                onChange={e => setOtpCode(e.target.value.replace(/\D/g, ''))}
+                style={{
+                  width: '100%', padding: '10px 14px', fontSize: '18px', fontWeight: 700,
+                  textAlign: 'center', letterSpacing: '8px',
+                  borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
+                  background: 'var(--content-bg)', color: 'var(--text-primary)', outline: 'none'
+                }}
+                autoFocus
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+              <button onClick={() => setShowOtpModal(false)} style={{
+                padding: '8px 16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
+                background: 'transparent', color: 'var(--text-secondary)', fontSize: '13px', fontWeight: 600, cursor: 'pointer'
+              }}>
+                Cancel
+              </button>
+              <button onClick={handleConfirmOtp} style={{
+                padding: '8px 20px', borderRadius: 'var(--radius-sm)', border: 'none',
+                background: 'var(--text-primary)', color: 'var(--card-bg)', fontSize: '13px', fontWeight: 600, cursor: 'pointer'
+              }}>
+                Verify & Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Update Email Modal */}
       {isEmailModalOpen && (
         <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.5)', zIndex: 100,
+          position: 'fixed', inset: 0,
+          background: 'rgba(0,0,0,0.4)', zIndex: 100,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          animation: 'fadeIn 0.2s ease'
+          backdropFilter: 'blur(3px)'
         }}>
           <div style={{
             background: 'var(--card-bg)', width: '400px', borderRadius: 'var(--radius-lg)',

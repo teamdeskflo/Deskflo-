@@ -20,7 +20,16 @@ export async function GET(request: NextRequest) {
       .select(`
         *,
         shared_links(id, type, slug, clicks),
-        projects!inner(id, client_id, clients!inner(freelancer_id))
+        projects!inner(
+          id,
+          name,
+          client_id,
+          clients!inner(
+            id,
+            name,
+            freelancer_id
+          )
+        )
       `)
       .eq('projects.clients.freelancer_id', freelancerId)
       .order('created_at', { ascending: false });
@@ -36,6 +45,40 @@ export async function GET(request: NextRequest) {
   }
 }
 
+const ALLOWED_DOMAINS = [
+  'drive.google.com',
+  'docs.google.com',
+  'dropbox.com',
+  'www.dropbox.com',
+  'onedrive.live.com',
+  'sharepoint.com',
+  '1drv.ms',
+  'live.com',
+  'figma.com',
+  'www.figma.com',
+  'notion.so',
+  'www.notion.so',
+  'notion.site',
+  'www.notion.site'
+];
+
+function validateHostingUrl(urlStr: string): boolean {
+  try {
+    let testUrl = urlStr.trim();
+    if (!/^https?:\/\//i.test(testUrl)) {
+      testUrl = 'https://' + testUrl;
+    }
+    const parsed = new URL(testUrl);
+    const hostname = parsed.hostname.toLowerCase();
+    
+    return ALLOWED_DOMAINS.some(domain => 
+      hostname === domain || hostname.endsWith('.' + domain)
+    );
+  } catch (e) {
+    return false;
+  }
+}
+
 // ── POST /api/files — register file + generate approval link ─
 export async function POST(request: NextRequest) {
   try {
@@ -46,6 +89,11 @@ export async function POST(request: NextRequest) {
     const { project_id, file_name, file_url, file_size, file_type, is_open_file } = body;
     if (!project_id || !file_name || !file_url) {
       return NextResponse.json({ error: 'project_id, file_name, and file_url are required' }, { status: 400 });
+    }
+
+    // Validate URL domain
+    if (!validateHostingUrl(file_url)) {
+      return NextResponse.json({ error: 'Invalid URL. Only links from Google Drive, Dropbox, OneDrive, Figma, and Notion are accepted.' }, { status: 400 });
     }
 
     // Verify project ownership
@@ -82,7 +130,7 @@ export async function POST(request: NextRequest) {
       freelancer_id: freelancerId,
       project_id,
       action: 'file_uploaded',
-      metadata: { file_name, approval_slug: link.slug },
+      metadata: { file_name, approval_slug: link.slug || '' },
     });
 
     return NextResponse.json({ ...file, approvalUrl, slug: link.slug }, { status: 201 });

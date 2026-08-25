@@ -1,21 +1,22 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Search, SlidersHorizontal, Plus, Pencil, Trash2,
   FolderOpen, BarChart2, ChevronDown, ChevronUp,
-  Clock, CheckCircle2, AlertCircle, RefreshCw, FileText
+  Clock, CheckCircle2, AlertCircle, RefreshCw, FileText, Folder
 } from 'lucide-react';
 import { useUser } from '@/lib/auth-context';
 import Link from 'next/link';
 
 // ── Types ─────────────────────────────────────────
-type ProjectStatus = 'review' | 'approved' | 'progress' | 'pending';
+type ProjectStatus = 'pending' | 'progress' | 'review' | 'approved';
 
 type Project = {
-  id: number;
+  id: string;
   name: string;
-  client: string;
+  client_id: string;
+  client_name: string;
   status: ProjectStatus;
   deadline: string;
   budget: string; // Storing as raw number string
@@ -24,15 +25,6 @@ type Project = {
   description: string;
 };
 
-// ── Mock data ──
-const INITIAL_PROJECTS: Project[] = [
-  { id: 1, name: 'Website Redesign',   client: 'Rahul Sharma',   status: 'review',   deadline: '20 May', budget: '45000', filesShared: 12, unpaidInvoices: 1, description: 'Complete overhaul of the main e-commerce website including new checkout flow and product pages.' },
-  { id: 2, name: 'Logo Package',       client: 'Priya Patel',    status: 'approved', deadline: '15 May', budget: '12000', filesShared: 4,  unpaidInvoices: 0, description: 'Brand identity design including logo variations, color palette, and typography guidelines.' },
-  { id: 3, name: 'Social Media Kit',   client: 'Vikram Singh',   status: 'progress', deadline: '30 May', budget: '18500', filesShared: 8,  unpaidInvoices: 0, description: 'Templates for Instagram and LinkedIn posts, plus cover photos for all platforms.' },
-  { id: 4, name: 'SEO Audit',          client: 'ClientX Agency', status: 'pending',  deadline: '10 Jun', budget: '25000', filesShared: 0,  unpaidInvoices: 0, description: 'Comprehensive technical SEO audit and keyword strategy report for Q3.' },
-  { id: 5, name: 'Brand Guidelines',   client: 'Rahul Sharma',   status: 'progress', deadline: '25 May', budget: '15000', filesShared: 2,  unpaidInvoices: 1, description: 'A 20-page PDF document detailing the proper usage of the new WebCraft branding.' },
-];
-
 const STATUS_CONFIG: Record<ProjectStatus, { label: string; icon: any; color: string; bg: string }> = {
   review:   { label: 'Review',   icon: AlertCircle, color: '#D4A017', bg: '#FDF8EC' },
   approved: { label: 'Approved', icon: CheckCircle2,color: '#10B981', bg: '#ECFDF5' },
@@ -40,7 +32,6 @@ const STATUS_CONFIG: Record<ProjectStatus, { label: string; icon: any; color: st
   pending:  { label: 'Pending',  icon: Clock,       color: 'var(--text-muted)', bg: '#F3F4F6' },
 };
 
-// Formatting helper (Can be replaced with user preference later)
 const formatCurrency = (amount: string) => {
   if (!amount) return '₹0';
   return `₹${Number(amount).toLocaleString('en-IN')}`;
@@ -48,14 +39,35 @@ const formatCurrency = (amount: string) => {
 
 // ── Add / Edit Modal ───────────────────────────────
 function ProjectModal({ project, onClose, onSave }: { project?: Project; onClose: () => void; onSave: (p: Partial<Project>) => void }) {
+  const [clients, setClients] = useState<{ id: string; name: string }[]>([]);
   const [formData, setFormData] = useState({
     name: project?.name || '',
-    client: project?.client || '',
+    client_id: project?.client_id || '',
     status: project?.status || 'progress',
     deadline: project?.deadline || '',
     budget: project?.budget || '',
     description: project?.description || '',
   });
+
+  // Load clients list for dropdown selection
+  useEffect(() => {
+    async function loadClients() {
+      try {
+        const res = await fetch('/api/clients');
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setClients(data.map(c => ({ id: c.id, name: c.name })));
+          // Auto-select first client if none selected
+          if (data.length > 0 && !formData.client_id) {
+            setFormData(prev => ({ ...prev, client_id: data[0].id }));
+          }
+        }
+      } catch (err) {
+        console.error('Error loading clients in modal:', err);
+      }
+    }
+    loadClients();
+  }, [formData.client_id]);
 
   return (
     <div style={{
@@ -76,29 +88,64 @@ function ProjectModal({ project, onClose, onSave }: { project?: Project; onClose
         </h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           
-          {/* General Text Inputs */}
-          {[
-            { label: 'Project Name', field: 'name', placeholder: 'e.g. Website Redesign', type: 'text' },
-            { label: 'Client Name', field: 'client', placeholder: 'e.g. Rahul Sharma', type: 'text' },
-            { label: 'Deadline', field: 'deadline', placeholder: 'e.g. 20 May', type: 'text' },
-          ].map(({ label, field, placeholder, type }) => (
-            <div key={label}>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '5px' }}>
-                {label}
-              </label>
-              <input
-                type={type}
-                value={(formData as any)[field]}
-                onChange={e => setFormData({ ...formData, [field]: e.target.value })}
-                placeholder={placeholder}
-                style={{
-                  width: '100%', padding: '9px 12px', fontSize: '13.5px',
-                  border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
-                  outline: 'none', color: 'var(--text-primary)', background: 'var(--card-bg)',
-                }}
-              />
-            </div>
-          ))}
+          {/* Project Name */}
+          <div>
+            <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '5px' }}>
+              Project Name
+            </label>
+            <input
+              value={formData.name}
+              onChange={e => setFormData({ ...formData, name: e.target.value })}
+              placeholder="e.g. Website Redesign"
+              style={{
+                width: '100%', padding: '9px 12px', fontSize: '13.5px',
+                border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+                outline: 'none', color: 'var(--text-primary)', background: 'var(--card-bg)',
+              }}
+            />
+          </div>
+
+          {/* Client Selector Dropdown */}
+          <div>
+            <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '5px' }}>
+              Select Client
+            </label>
+            <select
+              value={formData.client_id}
+              onChange={e => setFormData({ ...formData, client_id: e.target.value })}
+              style={{
+                width: '100%', padding: '9px 12px', fontSize: '13.5px',
+                border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+                outline: 'none', color: 'var(--text-primary)', background: 'var(--card-bg)',
+                cursor: 'pointer'
+              }}
+            >
+              {clients.length === 0 ? (
+                <option value="">No clients found (Add client first)</option>
+              ) : (
+                clients.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))
+              )}
+            </select>
+          </div>
+
+          {/* Deadline */}
+          <div>
+            <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '5px' }}>
+              Deadline
+            </label>
+            <input
+              type="date"
+              value={formData.deadline}
+              onChange={e => setFormData({ ...formData, deadline: e.target.value })}
+              style={{
+                width: '100%', padding: '9px 12px', fontSize: '13.5px',
+                border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+                outline: 'none', color: 'var(--text-primary)', background: 'var(--card-bg)',
+              }}
+            />
+          </div>
 
           {/* Budget Input */}
           <div>
@@ -170,7 +217,7 @@ function ProjectModal({ project, onClose, onSave }: { project?: Project; onClose
           }}>Cancel</button>
           <button 
             onClick={() => {
-              if (!formData.name || !formData.client) return alert('Project name and client are required');
+              if (!formData.name || !formData.client_id) return alert('Project name and client are required');
               onSave(formData);
             }}
             style={{
@@ -187,7 +234,8 @@ function ProjectModal({ project, onClose, onSave }: { project?: Project; onClose
 // ── Page ──────────────────────────────────────────
 export default function ProjectsPage() {
   const user = useUser();
-  const [projects, setProjects] = useState<Project[]>(INITIAL_PROJECTS);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'progress' | 'review' | 'pending' | 'approved'>('all');
   const [showFilterMenu, setShowFilterMenu] = useState(false);
@@ -195,9 +243,43 @@ export default function ProjectsPage() {
   const [modal, setModal] = useState<'add' | 'edit' | null>(null);
   const [editingProject, setEditingProject] = useState<Project | undefined>();
 
-  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
-  const toggleExpand = (id: number) => {
+  const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long' });
+
+  // ── Fetch Projects ────────────────────────────────────────
+  async function loadProjects() {
+    try {
+      setLoading(true);
+      const res = await fetch('/api/projects');
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        const formatted = data.map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          client_id: p.client_id,
+          client_name: p.clients?.name || 'Client',
+          status: p.status, // mapped to ProjectStatus
+          deadline: p.deadline || 'No Deadline',
+          budget: String(p.budget || 0),
+          filesShared: p.filesShared || 0,
+          unpaidInvoices: p.unpaidInvoices || 0,
+          description: p.description || ''
+        }));
+        setProjects(formatted);
+      }
+    } catch (err) {
+      console.error('Error fetching projects:', err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadProjects();
+  }, []);
+
+  const toggleExpand = (id: string) => {
     setExpandedIds(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -209,38 +291,73 @@ export default function ProjectsPage() {
   const filtered = projects.filter(p => {
     const matchSearch =
       p.name.toLowerCase().includes(search.toLowerCase()) ||
-      p.client.toLowerCase().includes(search.toLowerCase());
+      p.client_name.toLowerCase().includes(search.toLowerCase());
     const matchFilter = filter === 'all' ? true : p.status === filter;
     return matchSearch && matchFilter;
   });
 
   const totalActive = projects.filter(p => p.status === 'progress' || p.status === 'review').length;
   const totalCompleted = projects.filter(p => p.status === 'approved').length;
-  const totalOverdue = 2; // Mock stat for the bottom bar
+  const totalBudget = projects.reduce((s, p) => s + Number(p.budget || 0), 0);
 
-  const handleSaveProject = (data: Partial<Project>) => {
-    if (modal === 'edit' && editingProject) {
-      setProjects(projects.map(p => p.id === editingProject.id ? { ...p, ...data } as Project : p));
-    } else {
-      setProjects([...projects, { 
-        ...data, 
-        id: Date.now(), 
-        filesShared: 0, 
-        unpaidInvoices: 0 
-      } as Project]);
+  // ── Save/Edit Project ─────────────────────────────────────
+  const handleSaveProject = async (data: Partial<Project>) => {
+    try {
+      const payload = {
+        name: data.name,
+        client_id: data.client_id,
+        status: data.status,
+        deadline: data.deadline,
+        budget: data.budget ? parseFloat(data.budget) : 0,
+        description: data.description
+      };
+
+      if (modal === 'edit' && editingProject) {
+        const res = await fetch(`/api/projects/${editingProject.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) loadProjects();
+        else alert('Failed to update project.');
+      } else {
+        const res = await fetch('/api/projects', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          loadProjects();
+        } else {
+          const resData = await res.json().catch(() => ({}));
+          alert(`Failed to create project: ${resData.error || res.statusText || 'Unknown error'}`);
+        }
+      }
+    } catch (err) {
+      console.error('Error saving project:', err);
     }
     setModal(null);
     setEditingProject(undefined);
   };
 
-  const handleDelete = (id: number) => {
-    if (confirm('Are you sure you want to delete this project?')) {
-      setProjects(projects.filter(p => p.id !== id));
-      setExpandedIds(prev => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
+  // ── Delete Project ────────────────────────────────────────
+  const handleDelete = async (id: string) => {
+    if (confirm('Are you sure you want to delete this project? All project deliverables and settings will be permanently lost.')) {
+      try {
+        const res = await fetch(`/api/projects/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+          loadProjects();
+          setExpandedIds(prev => {
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+          });
+        } else {
+          alert('Failed to delete project.');
+        }
+      } catch (err) {
+        console.error('Error deleting project:', err);
+      }
     }
   };
 
@@ -259,11 +376,9 @@ export default function ProjectsPage() {
       {/* Page header */}
       <div style={{ marginBottom: '22px' }}>
         <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: '0 0 2px' }}>
-          Welcome back, {user.name.split(' ')[0]}!
+          Welcome back, {user?.name ? user.name.split(' ')[0] : 'Freelancer'}!
         </p>
-        <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: 0 }}>
-          {new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long' })}
-        </p>
+        <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: 0 }}>{today}</p>
       </div>
 
       {/* Title row */}
@@ -373,15 +488,51 @@ export default function ProjectsPage() {
           ))}
         </div>
 
-        {/* Rows */}
-        {filtered.length === 0 ? (
+        {/* Rows / Blank slate */}
+        {loading ? (
+          <div style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '14px' }}>
+            Loading projects...
+          </div>
+        ) : projects.length === 0 ? (
+          /* Premium Blank Slate Empty State Illustration */
+          <div style={{
+            padding: '60px 30px', textAlign: 'center',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <div style={{
+              width: '60px', height: '60px', borderRadius: '50%',
+              background: 'var(--border-light)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              marginBottom: '16px', color: 'var(--text-muted)'
+            }}>
+              <Folder size={26} strokeWidth={1.5} />
+            </div>
+            <h3 style={{ fontSize: '16px', fontWeight: 700, margin: '0 0 6px', color: 'var(--text-primary)' }}>
+              Your projects will be listed and shown here
+            </h3>
+            <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: '0 0 20px', maxWidth: '380px', lineHeight: 1.5 }}>
+              Establish projects to track development stages, attach file deliverables for public review, and track overall budget and due dates.
+            </p>
+            <button
+              onClick={() => setModal('add')}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '6px',
+                padding: '9px 18px', borderRadius: 'var(--radius-md)',
+                background: 'var(--text-primary)', color: 'var(--card-bg)',
+                border: 'none', fontSize: '13.5px', fontWeight: 600, cursor: 'pointer',
+                boxShadow: 'var(--shadow-sm)',
+              }}
+            >
+              <Plus size={14} strokeWidth={2.5} /> Create First Project
+            </button>
+          </div>
+        ) : filtered.length === 0 ? (
           <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '14px' }}>
-            No projects found.
+            No projects matched your criteria.
           </div>
         ) : (
           filtered.map((proj, i) => {
             const isExpanded = expandedIds.has(proj.id);
-            const statusCfg = STATUS_CONFIG[proj.status];
+            const statusCfg = STATUS_CONFIG[proj.status] || STATUS_CONFIG.pending;
             const StatusIcon = statusCfg.icon;
 
             return (
@@ -423,7 +574,7 @@ export default function ProjectsPage() {
 
                   {/* Client */}
                   <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                    {proj.client}
+                    {proj.client_name}
                   </div>
 
                   {/* Status */}
@@ -507,7 +658,7 @@ export default function ProjectsPage() {
                         Project Scope
                       </h4>
                       <p style={{ fontSize: '13px', color: 'var(--text-primary)', lineHeight: 1.5, margin: 0 }}>
-                        {proj.description}
+                        {proj.description || 'No description provided.'}
                       </p>
                     </div>
 
@@ -572,8 +723,8 @@ export default function ProjectsPage() {
           Completed: <strong>{totalCompleted}</strong>
         </span>
         <div style={{ width: '1px', height: '16px', background: 'var(--border)', margin: '0 8px' }} />
-        <span style={{ fontSize: '13.5px', color: 'var(--error)', fontWeight: 700 }}>
-          Overdue: {totalOverdue}
+        <span style={{ fontSize: '13.5px', color: 'var(--accent)', fontWeight: 700 }}>
+          Budget sum: {formatCurrency(totalBudget.toString())}
         </span>
       </div>
     </div>

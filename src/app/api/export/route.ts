@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createAdminClient } from '@/lib/supabase/server';
-import archiver from 'archiver';
 import { Readable } from 'stream';
 
 // ── GET /api/export — download all user data as ZIP ──────────
@@ -29,6 +28,7 @@ export async function GET(_request: NextRequest) {
 
     // Build ZIP in memory
     const chunks: Buffer[] = [];
+    const archiver = require('archiver');
     const archive = archiver('zip', { zlib: { level: 6 } });
 
     const streamDone = new Promise<Buffer>((resolve, reject) => {
@@ -60,7 +60,7 @@ export async function GET(_request: NextRequest) {
     archive.finalize();
     const zipBuffer = await streamDone;
 
-    return new NextResponse(zipBuffer, {
+    return new NextResponse(new Uint8Array(zipBuffer), {
       headers: {
         'Content-Type':        'application/zip',
         'Content-Disposition': `attachment; filename="deskflo-export-${new Date().toISOString().split('T')[0]}.zip"`,

@@ -1,292 +1,562 @@
 'use client';
 
-import { useState } from 'react';
-import { CreditCard, X, Download, AlertTriangle } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { useUser } from '@/lib/auth-context';
+import {
+  CreditCard, X, AlertTriangle, AlertCircle, Loader2,
+  CheckCircle2, Clock, ShieldCheck, RefreshCw, Zap,
+  ChevronRight, ArrowRight, Lock, BadgeCheck,
+} from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
+import { trialDaysRemaining } from '@/lib/auth-context';
 
+// ── Types ────────────────────────────────────────────────────
+type BillingHistoryRow = {
+  id: string;
+  plan: 'monthly' | 'annual';
+  amount: number;
+  status: 'paid' | 'failed' | 'refunded';
+  created_at: string;
+  razorpay_payment_id?: string;
+};
+
+// ── Declare Razorpay on window ─────────────────────────────
+declare global {
+  interface Window {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    Razorpay: any;
+  }
+}
+
+// ── Helpers ──────────────────────────────────────────────────
+function formatDate(d: Date | string | undefined): string {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+function formatAmount(n: number) {
+  return `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+// ── Load Razorpay script lazily ───────────────────────────────
+function loadRazorpayScript(): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (window.Razorpay) { resolve(true); return; }
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.onload  = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+}
+
+// ── Component ────────────────────────────────────────────────
 export default function SettingsBillingPage() {
-  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const user = useUser();
+  const supabase = createClient();
+
+  const [billingHistory, setBillingHistory] = useState<BillingHistoryRow[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [checkoutLoading, setCheckoutLoading] = useState<false | 'monthly' | 'annual'>(false);
+  const [switchLoading, setSwitchLoading] = useState(false);
+  const [cancelLoading, setCancelLoading] = useState(false);
+
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
-  const [isAnnualModalOpen, setIsAnnualModalOpen] = useState(false);
-  
-  const [upiId, setUpiId] = useState('rishi@okhdfsbank');
-  const [tempUpi, setTempUpi] = useState('');
+  const [switchTo, setSwitchTo] = useState<'monthly' | 'annual' | null>(null);
 
-  const billingHistory = [
-    { id: 'INV-2026-05', date: '15 May 2026', plan: 'Deskflo Pro', amount: '₹299' },
-    { id: 'INV-2026-04', date: '15 April 2026', plan: 'Deskflo Pro', amount: '₹299' },
-    { id: 'INV-2026-03', date: '15 March 2026', plan: 'Deskflo Pro', amount: '₹299' },
-  ];
+  // Derived state
+  const status      = user?.subscription_status ?? 'trial';
+  const plan        = user?.billing_plan ?? 'monthly';
+  const daysLeft    = trialDaysRemaining(user?.trial_ends_at);
+  const isTrialOver = status === 'trial' && daysLeft === 0;
+  const priceText   = plan === 'annual' ? '₹2,990/yr' : '₹299/mo';
 
-  const handleDownload = (id: string) => {
-    alert(`Downloading invoice ${id} PDF...`);
-  };
+  // ── Load billing history ──────────────────────────────────
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { setHistoryLoading(false); return; }
+    const { data } = await supabase
+      .from('billing_history')
+      .select('*')
+      .eq('freelancer_id', session.user.id)
+      .order('created_at', { ascending: false })
+      .limit(20);
+    setBillingHistory(data ?? []);
+    setHistoryLoading(false);
+  }, [supabase]);
 
-  const savePaymentMethod = () => {
-    if (tempUpi.trim()) {
-      setUpiId(tempUpi);
-      setIsPaymentModalOpen(false);
+  useEffect(() => { loadHistory(); }, [loadHistory]);
+
+  // ── Razorpay Checkout ─────────────────────────────────────
+  const openCheckout = async (selectedPlan: 'monthly' | 'annual') => {
+    setCheckoutLoading(selectedPlan);
+    const loaded = await loadRazorpayScript();
+    if (!loaded) {
+      alert('Could not load payment gateway. Please check your connection.');
+      setCheckoutLoading(false);
+      return;
     }
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { setCheckoutLoading(false); return; }
+
+    // Call backend to create Razorpay Customer + Subscription
+    const res = await fetch('/api/billing/create-subscription', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ plan: selectedPlan }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      alert(`Could not start checkout: ${err.error ?? 'Unknown error'}`);
+      setCheckoutLoading(false);
+      return;
+    }
+
+    const { subscription_id, razorpay_key, customer_id } = await res.json();
+
+    const options = {
+      key:             razorpay_key,
+      subscription_id: subscription_id,
+      customer_id:     customer_id,
+      name:            'Deskflo',
+      description:     selectedPlan === 'annual' ? 'Annual Plan — ₹2,990/yr' : 'Monthly Plan — ₹299/mo',
+      image:           '/deskflo.png',
+      prefill: {
+        name:    user?.name,
+        email:   user?.email,
+        contact: '',
+      },
+      notes: {
+        plan: selectedPlan,
+        freelancer_id: session.user.id,
+      },
+      theme: { color: '#111827' },
+      handler: () => {
+        // Webhook will update DB; refresh page after short delay
+        setTimeout(() => window.location.reload(), 2000);
+      },
+      modal: {
+        ondismiss: () => setCheckoutLoading(false),
+      },
+    };
+
+    const rzp = new window.Razorpay(options);
+    rzp.open();
+    setCheckoutLoading(false);
   };
 
-  const confirmCancel = () => {
-    alert("Subscription cancelled. You will have access until 15 June 2026.");
+  // ── Switch billing cycle ──────────────────────────────────
+  const confirmSwitch = async () => {
+    if (!switchTo) return;
+    setSwitchLoading(true);
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      await supabase.from('users')
+        .update({ billing_plan: switchTo })
+        .eq('id', session.user.id);
+    }
+    setSwitchLoading(false);
+    setSwitchTo(null);
+    window.location.reload();
+  };
+
+  // ── Cancel subscription ────────────────────────────────────
+  const confirmCancel = async () => {
+    setCancelLoading(true);
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      // Mark as cancelled in DB (webhook from Razorpay will also update this)
+      await supabase.from('users')
+        .update({ subscription_status: 'cancelled' })
+        .eq('id', session.user.id);
+    }
+    setCancelLoading(false);
     setIsCancelModalOpen(false);
+    window.location.reload();
   };
 
-  const confirmAnnual = () => {
-    alert("Switched to Annual Plan! Your new billing cycle starts on 15 June 2026 for ₹2,990.");
-    setIsAnnualModalOpen(false);
+  // ── Status banner config ──────────────────────────────────
+  type Banner = { bg: string; border: string; icon: React.ReactNode; text: React.ReactNode; cta?: React.ReactNode };
+  const banner: Banner | null = (() => {
+    const btnBase: React.CSSProperties = {
+      padding: '7px 16px', borderRadius: '8px', border: 'none',
+      fontSize: '13px', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+    };
+    if (status === 'trial' && !isTrialOver) return {
+      bg: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)',
+      icon: <Clock size={16} color="#D97706" />,
+      text: <><strong style={{ color: '#92400E' }}>{daysLeft} {daysLeft === 1 ? 'day' : 'days'} left in your free trial.</strong>&nbsp; Your workspace and data are safe.</>,
+      cta: <button onClick={() => openCheckout('monthly')} style={{ ...btnBase, background: '#1F2937', color: '#fff' }}>Upgrade Plan</button>,
+    };
+    if (isTrialOver) return {
+      bg: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)',
+      icon: <Lock size={16} color="#DC2626" />,
+      text: <><strong style={{ color: '#991B1B' }}>Your free trial has ended.</strong>&nbsp; Workspace is paused — your data is safe.</>,
+      cta: <button onClick={() => openCheckout('monthly')} style={{ ...btnBase, background: '#DC2626', color: '#fff' }}>Upgrade Plan</button>,
+    };
+    if (status === 'active') return {
+      bg: 'rgba(16,185,129,0.07)', border: '1px solid rgba(16,185,129,0.2)',
+      icon: <CheckCircle2 size={16} color="#059669" />,
+      text: <><strong style={{ color: '#065F46' }}>Subscription Active</strong>&nbsp;·&nbsp;<span style={{ color: '#059669', fontWeight: 700 }}>AutoPay ON</span>&nbsp;·&nbsp;Next charge: {formatDate(user?.next_billing_date)}</>,
+      cta: null,
+    };
+    if (status === 'expired') return {
+      bg: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)',
+      icon: <AlertCircle size={16} color="#DC2626" />,
+      text: <><strong style={{ color: '#991B1B' }}>Payment failed.</strong>&nbsp; Please update your payment method to continue.</>,
+      cta: <button onClick={() => openCheckout(plan)} style={{ ...btnBase, background: '#DC2626', color: '#fff' }}>Update Payment Method</button>,
+    };
+    if (status === 'cancelled') return {
+      bg: 'rgba(107,114,128,0.07)', border: '1px solid rgba(107,114,128,0.2)',
+      icon: <AlertTriangle size={16} color="#6B7280" />,
+      text: <><strong style={{ color: 'var(--text-primary)' }}>Subscription cancelled.</strong>&nbsp; Access continues until {formatDate(user?.trial_ends_at ?? user?.next_billing_date)}.</>,
+      cta: <button onClick={() => openCheckout('monthly')} style={{ ...btnBase, background: '#1F2937', color: '#fff' }}>Reactivate</button>,
+    };
+    return null;
+  })();
+
+  // ── Shared styles ─────────────────────────────────────────
+  const cardStyle: React.CSSProperties = {
+    background: 'var(--card-bg)', borderRadius: 'var(--radius-lg)',
+    border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)', overflow: 'hidden',
+  };
+  const sectionHead: React.CSSProperties = {
+    fontSize: '13px', fontWeight: 700, color: 'var(--text-muted)',
+    textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 14px',
   };
 
+  // ── Render ─────────────────────────────────────────────────
   return (
-    <div style={{ width: '100%' }}>
-      {/* Title */}
-      <h1 style={{ fontSize: '26px', fontWeight: 800, color: 'var(--text-primary)', margin: '0 0 24px', letterSpacing: '-0.5px' }}>
-        Settings - Billing
+    <div style={{ width: '100%', maxWidth: '760px', fontFamily: "'Inter', sans-serif" }}>
+
+      {/* Page Title */}
+      <h1 style={{ fontSize: '24px', fontWeight: 800, color: 'var(--text-primary)', margin: '0 0 24px', letterSpacing: '-0.5px' }}>
+        Billing
       </h1>
 
-      {/* Main Card */}
-      <div style={{ 
-        background: 'var(--card-bg)', 
-        borderRadius: 'var(--radius-lg)', 
-        border: '1px solid var(--border)', 
-        boxShadow: 'var(--shadow-sm)',
-        overflow: 'hidden',
-        maxWidth: '800px'
-      }}>
-        {/* Header */}
-        <div style={{ 
-          background: 'var(--border-light)', 
-          padding: '16px 20px', 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: '10px',
-          borderBottom: '1px solid var(--border)'
+      {/* ── Status Banner ───────────────────────────────── */}
+      {banner && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
+          flexWrap: 'wrap', padding: '12px 16px', borderRadius: '12px',
+          background: banner.bg, border: banner.border, marginBottom: '24px',
         }}>
-          <CreditCard size={20} color="var(--accent-dark)" strokeWidth={2.5} />
-          <h2 style={{ fontSize: '18px', fontWeight: 800, margin: 0, color: 'var(--text-primary)', letterSpacing: '-0.3px', textTransform: 'uppercase' }}>
-            BILLING & SUBSCRIPTION
-          </h2>
-        </div>
-
-        {/* Body */}
-        <div style={{ padding: '24px' }}>
-          
-          {/* Current Plan */}
-          <div style={{ marginBottom: '32px' }}>
-            <h3 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 12px' }}>
-              Current Plan:
-            </h3>
-            <div style={{ display: 'flex', gap: '24px', alignItems: 'center', flexWrap: 'wrap' }}>
-              {/* Plan Card */}
-              <div style={{ 
-                background: 'var(--accent-light)', 
-                border: '1px solid var(--accent)', 
-                borderRadius: 'var(--radius-md)', 
-                padding: '16px',
-                width: '260px',
-                boxShadow: '0 4px 12px rgba(212, 160, 23, 0.1)'
-              }}>
-                <div style={{ textAlign: 'center', borderBottom: '1px solid rgba(0,0,0,0.1)', paddingBottom: '12px', marginBottom: '12px' }}>
-                  <h4 style={{ margin: '0 0 8px', fontSize: '16px', fontWeight: 800, color: '#111827', letterSpacing: '0.5px' }}>DESKFLO PRO</h4>
-                  <div style={{ fontSize: '24px', fontWeight: 800, color: '#111827' }}>
-                    ₹299<span style={{ fontSize: '14px', fontWeight: 600, color: '#4B5563' }}>/month</span>
-                  </div>
-                </div>
-                <ul style={{ margin: 0, padding: 0, listStyle: 'none', color: '#111827', fontSize: '13px', lineHeight: 1.6 }}>
-                  <li>• Up to 50 clients</li>
-                  <li>• 20GB storage</li>
-                  <li>• White-label (logo + color)</li>
-                  <li>• All features included</li>
-                </ul>
-              </div>
-
-              {/* Billing Info */}
-              <div>
-                <p style={{ margin: '0 0 8px', fontSize: '14px', color: 'var(--text-primary)' }}>
-                  Next billing date: <strong>15 June 2026</strong>
-                </p>
-                <p style={{ margin: '0 0 16px', fontSize: '14px', color: 'var(--text-primary)' }}>
-                  Amount: <strong>₹299</strong>
-                </p>
-                <button onClick={() => setIsCancelModalOpen(true)} style={{
-                  padding: '8px 16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--error)',
-                  background: 'var(--error-light)', color: 'var(--error)', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
-                }}>
-                  Cancel Subscription
-                </button>
-              </div>
-            </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13.5px', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+            {banner.icon} {banner.text}
           </div>
+          {banner.cta}
+        </div>
+      )}
 
-          {/* Payment Method */}
-          <div style={{ marginBottom: '32px' }}>
-            <h3 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 12px' }}>
-              Payment Method:
-            </h3>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <span style={{ fontSize: '14px', color: 'var(--text-primary)' }}>
-                Current: UPI ID — <strong>{upiId}</strong>
-              </span>
-              <button onClick={() => { setTempUpi(upiId); setIsPaymentModalOpen(true); }} style={{
-                padding: '6px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
-                background: 'var(--border-light)', color: 'var(--text-primary)', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
-              }}>
-                Change Payment Method
+      {/* ── Billing Plan ────────────────────────────────── */}
+      <div style={{ ...cardStyle, marginBottom: '16px' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)' }}>
+          <p style={sectionHead}>Billing Plan</p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+
+            {/* Monthly */}
+            <div style={{
+              padding: '20px', borderRadius: '12px',
+              border: plan === 'monthly' ? '2px solid var(--text-primary)' : '1px solid var(--border)',
+              background: plan === 'monthly' ? 'var(--border-light)' : 'var(--card-bg)',
+              position: 'relative',
+            }}>
+              {plan === 'monthly' && (
+                <div style={{ position: 'absolute', top: '12px', right: '12px' }}>
+                  <BadgeCheck size={18} color="var(--text-primary)" />
+                </div>
+              )}
+              <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Monthly</div>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: 'var(--text-primary)', letterSpacing: '-0.5px', marginBottom: '4px' }}>₹299<span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-muted)' }}>/mo</span></div>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '16px' }}>Billed every month</div>
+              <button
+                onClick={() => status === 'active' && plan === 'monthly' ? undefined : openCheckout('monthly')}
+                disabled={checkoutLoading !== false || (status === 'active' && plan === 'monthly')}
+                style={{
+                  width: '100%', padding: '9px', borderRadius: '8px', border: 'none', fontSize: '13px', fontWeight: 700, cursor: (status === 'active' && plan === 'monthly') ? 'default' : 'pointer',
+                  background: (status === 'active' && plan === 'monthly') ? 'var(--border)' : 'var(--text-primary)',
+                  color: (status === 'active' && plan === 'monthly') ? 'var(--text-muted)' : 'var(--card-bg)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                }}
+              >
+                {checkoutLoading === 'monthly' ? <Loader2 size={14} className="spin" /> : null}
+                {status === 'active' && plan === 'monthly' ? 'Current Plan' : 'Upgrade Plan'}
+              </button>
+            </div>
+
+            {/* Annual */}
+            <div style={{
+              padding: '20px', borderRadius: '12px',
+              border: plan === 'annual' ? '2px solid var(--text-primary)' : '1px solid var(--border)',
+              background: plan === 'annual' ? 'var(--border-light)' : 'var(--card-bg)',
+              position: 'relative',
+            }}>
+              {/* Best value badge */}
+              <div style={{
+                position: 'absolute', top: '-11px', left: '50%', transform: 'translateX(-50%)',
+                background: '#059669', color: '#fff', fontSize: '10px', fontWeight: 800,
+                padding: '3px 10px', borderRadius: '100px', whiteSpace: 'nowrap', letterSpacing: '0.05em',
+              }}>PAY 10 MONTHS, GET 12</div>
+              {plan === 'annual' && (
+                <div style={{ position: 'absolute', top: '12px', right: '12px' }}>
+                  <BadgeCheck size={18} color="var(--text-primary)" />
+                </div>
+              )}
+              <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: '8px' }}>Annual</div>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: 'var(--text-primary)', letterSpacing: '-0.5px', marginBottom: '2px' }}>₹2,990<span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-muted)' }}>/yr</span></div>
+              <div style={{ fontSize: '12px', color: '#059669', fontWeight: 600, marginBottom: '16px' }}>Save ₹598 vs monthly</div>
+              <button
+                onClick={() => status === 'active' && plan === 'annual' ? undefined : openCheckout('annual')}
+                disabled={checkoutLoading !== false || (status === 'active' && plan === 'annual')}
+                style={{
+                  width: '100%', padding: '9px', borderRadius: '8px', border: 'none', fontSize: '13px', fontWeight: 700, cursor: (status === 'active' && plan === 'annual') ? 'default' : 'pointer',
+                  background: (status === 'active' && plan === 'annual') ? 'var(--border)' : '#059669',
+                  color: (status === 'active' && plan === 'annual') ? 'var(--text-muted)' : '#fff',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                }}
+              >
+                {checkoutLoading === 'annual' ? <Loader2 size={14} className="spin" /> : null}
+                {status === 'active' && plan === 'annual' ? 'Current Plan' : 'Upgrade Plan'}
               </button>
             </div>
           </div>
-
-          {/* Billing History */}
-          <div style={{ marginBottom: '32px' }}>
-            <h3 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 12px' }}>
-              Billing History:
-            </h3>
-            <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                <thead style={{ background: 'var(--border-light)' }}>
-                  <tr>
-                    <th style={{ padding: '12px 16px', fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', borderBottom: '1px solid var(--border)' }}>Date</th>
-                    <th style={{ padding: '12px 16px', fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', borderBottom: '1px solid var(--border)' }}>Plan</th>
-                    <th style={{ padding: '12px 16px', fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', borderBottom: '1px solid var(--border)' }}>Amount</th>
-                    <th style={{ padding: '12px 16px', fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', borderBottom: '1px solid var(--border)' }}>Invoice</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {billingHistory.map((item, idx) => (
-                    <tr key={idx}>
-                      <td style={{ padding: '12px 16px', fontSize: '13px', color: 'var(--text-primary)', borderBottom: '1px solid var(--border)' }}>{item.date}</td>
-                      <td style={{ padding: '12px 16px', fontSize: '13px', color: 'var(--text-primary)', borderBottom: '1px solid var(--border)' }}>{item.plan}</td>
-                      <td style={{ padding: '12px 16px', fontSize: '13px', color: 'var(--text-primary)', borderBottom: '1px solid var(--border)' }}>{item.amount}</td>
-                      <td style={{ padding: '12px 16px', fontSize: '13px', color: 'var(--text-primary)', borderBottom: '1px solid var(--border)' }}>
-                        <button onClick={() => handleDownload(item.id)} style={{
-                          background: 'transparent', border: 'none', color: 'var(--accent-dark)', fontSize: '13px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: 0
-                        }}>
-                           Download PDF
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Annual Plan */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--border-light)', padding: '20px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
-            <div>
-              <h3 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 8px' }}>
-                Annual Plan (Save 16%):
-              </h3>
-              <p style={{ margin: '0 0 4px', fontSize: '14px', color: 'var(--text-primary)' }}>
-                Pay ₹2,990/year instead of <span style={{ textDecoration: 'line-through', color: 'var(--text-muted)' }}>₹3,588</span>
-              </p>
-              <p style={{ margin: 0, fontSize: '14px', color: 'var(--success)', fontWeight: 600 }}>
-                You save ₹598
-              </p>
-            </div>
-            <button onClick={() => setIsAnnualModalOpen(true)} style={{
-              padding: '10px 20px', borderRadius: 'var(--radius-sm)', border: 'none',
-              background: 'var(--accent-dark)', color: 'white', fontSize: '14px', fontWeight: 600, cursor: 'pointer',
-              boxShadow: 'var(--shadow-sm)'
-            }}>
-              Switch to Annual Plan
-            </button>
-          </div>
-
         </div>
       </div>
 
-      {/* --- MODALS --- */}
-
-      {/* Change Payment Method Modal */}
-      {isPaymentModalOpen && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          animation: 'fadeIn 0.2s ease'
-        }}>
-          <div style={{
-            background: 'var(--card-bg)', width: '400px', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', overflow: 'hidden', border: '1px solid var(--border)'
-          }}>
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--border-light)' }}>
-              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)' }}>Update Payment Method</h3>
-              <button onClick={() => setIsPaymentModalOpen(false)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}><X size={18} /></button>
+      {/* ── Subscription Details (only when active) ─────── */}
+      {status === 'active' && (
+        <div style={{ ...cardStyle, marginBottom: '16px' }}>
+          <div style={{ padding: '20px 24px' }}>
+            <p style={sectionHead}>Subscription</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <Row label="Status">
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: '#059669', fontWeight: 700, fontSize: '13px' }}>
+                  <Zap size={13} fill="#059669" /> Active &nbsp;·&nbsp; AutoPay ON
+                </span>
+              </Row>
+              <Row label="Billing cycle">
+                <span style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: 600, textTransform: 'capitalize' }}>{plan}</span>
+                <button
+                  onClick={() => setSwitchTo(plan === 'monthly' ? 'annual' : 'monthly')}
+                  style={{ marginLeft: '10px', fontSize: '12px', color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '3px', fontWeight: 600, textDecoration: 'underline' }}
+                >
+                  Switch to {plan === 'monthly' ? 'Annual' : 'Monthly'} <ChevronRight size={12} />
+                </button>
+              </Row>
+              <Row label="Next billing date">
+                <span style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: 600 }}>{formatDate(user?.next_billing_date)}&nbsp;·&nbsp;{priceText}</span>
+              </Row>
+              <Row label="Payment method">
+                <span style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  {plan === 'monthly' || plan === 'annual' ? <CreditCard size={13} /> : null}
+                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                  {(user as any)?.payment_method_display ?? 'Autopay enabled'}
+                </span>
+              </Row>
             </div>
-            <div style={{ padding: '20px' }}>
-              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>
-                UPI ID / VPA
-              </label>
-              <input 
-                type="text" value={tempUpi} onChange={e => setTempUpi(e.target.value)}
-                style={{
-                  width: '100%', padding: '10px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--content-bg)', color: 'var(--text-primary)', fontSize: '14px', outline: 'none', marginBottom: '20px'
-                }}
-                autoFocus placeholder="e.g. name@bank"
-              />
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-                <button onClick={() => setIsPaymentModalOpen(false)} style={{ padding: '8px 16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
-                <button onClick={savePaymentMethod} style={{ padding: '8px 16px', borderRadius: 'var(--radius-sm)', border: 'none', background: 'var(--text-primary)', color: 'var(--card-bg)', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>Save UPI ID</button>
-              </div>
+            <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border)' }}>
+              <button
+                onClick={() => setIsCancelModalOpen(true)}
+                style={{ fontSize: '13px', color: 'var(--error)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}
+              >
+                <X size={13} /> Cancel Subscription
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Cancel Subscription Modal */}
+      {/* ── Payment Method (when method added but not active sub) ─ */}
+      {user?.payment_method_added && status !== 'active' && (
+        <div style={{ ...cardStyle, marginBottom: '16px' }}>
+          <div style={{ padding: '20px 24px' }}>
+            <p style={sectionHead}>Payment Method</p>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--text-primary)' }}>
+                <CreditCard size={15} />
+                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                <span style={{ fontWeight: 600 }}>{(user as any)?.payment_method_display ?? 'Autopay configured'}</span>
+              </div>
+              <button
+                onClick={() => openCheckout(plan)}
+                style={{ fontSize: '12px', color: 'var(--text-muted)', background: 'none', border: '1px solid var(--border)', borderRadius: '7px', padding: '5px 12px', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}
+              >
+                <RefreshCw size={12} /> Update
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Billing History ──────────────────────────────── */}
+      <div style={{ ...cardStyle, marginBottom: '32px' }}>
+        <div style={{ padding: '20px 24px 0' }}>
+          <p style={sectionHead}>Billing History</p>
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--border-light)' }}>
+                {['Date', 'Plan', 'Amount', 'Status', 'Receipt'].map(h => (
+                  <th key={h} style={{ padding: '10px 16px', fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {historyLoading ? (
+                <tr><td colSpan={5} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
+                  <Loader2 size={18} className="spin" style={{ margin: '0 auto 6px', display: 'block' }} /> Loading...
+                </td></tr>
+              ) : billingHistory.length === 0 ? (
+                <tr><td colSpan={5} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  <AlertCircle size={20} style={{ margin: '0 auto 8px', display: 'block' }} />
+                  <div style={{ fontSize: '13px', fontWeight: 600 }}>No payment history yet</div>
+                  <div style={{ fontSize: '12px', marginTop: '4px' }}>Receipts will appear here after your first payment.</div>
+                </td></tr>
+              ) : billingHistory.map(row => (
+                <tr key={row.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={{ padding: '12px 16px', fontSize: '13px', color: 'var(--text-primary)' }}>
+                    {formatDate(row.created_at)}
+                  </td>
+                  <td style={{ padding: '12px 16px', fontSize: '13px', color: 'var(--text-primary)', textTransform: 'capitalize', fontWeight: 600 }}>
+                    {row.plan}
+                  </td>
+                  <td style={{ padding: '12px 16px', fontSize: '13px', color: 'var(--text-primary)', fontWeight: 700 }}>
+                    {formatAmount(row.amount)}
+                  </td>
+                  <td style={{ padding: '12px 16px', fontSize: '12px' }}>
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '4px',
+                      padding: '2px 8px', borderRadius: '100px', fontWeight: 700,
+                      background: row.status === 'paid' ? 'rgba(16,185,129,0.1)' : row.status === 'failed' ? 'rgba(239,68,68,0.1)' : 'var(--border-light)',
+                      color: row.status === 'paid' ? '#059669' : row.status === 'failed' ? '#DC2626' : 'var(--text-muted)',
+                    }}>
+                      {row.status === 'paid' ? <CheckCircle2 size={11} /> : row.status === 'failed' ? <AlertCircle size={11} /> : null}
+                      {row.status.charAt(0).toUpperCase() + row.status.slice(1)}
+                    </span>
+                  </td>
+                  <td style={{ padding: '12px 16px' }}>
+                    {row.razorpay_payment_id ? (
+                      <a
+                        href={`https://dashboard.razorpay.com/app/payments/${row.razorpay_payment_id}`}
+                        target="_blank" rel="noopener noreferrer"
+                        style={{ fontSize: '12px', color: 'var(--text-muted)', textDecoration: 'none', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                      >
+                        View <ArrowRight size={11} />
+                      </a>
+                    ) : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ── Security note ────────────────────────────────── */}
+      <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', padding: '12px 16px', borderRadius: '10px', background: 'rgba(16,185,129,0.04)', border: '1px solid rgba(16,185,129,0.12)', marginBottom: '32px' }}>
+        <ShieldCheck size={16} color="#059669" style={{ flexShrink: 0, marginTop: '1px' }} />
+        <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+          Payments are processed securely by Razorpay (PCI-DSS Level 1). Deskflo never stores your card number or UPI credentials. AutoPay mandates can be cancelled at any time from this page.
+        </p>
+      </div>
+
+      {/* ══ MODALS ══════════════════════════════════════════ */}
+
+      {/* Cancel Subscription */}
       {isCancelModalOpen && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          animation: 'fadeIn 0.2s ease'
-        }}>
-          <div style={{
-            background: 'var(--card-bg)', width: '400px', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', overflow: 'hidden', border: '1px solid var(--border)'
-          }}>
-            <div style={{ padding: '24px', textAlign: 'center' }}>
-              <div style={{ width: '48px', height: '48px', background: 'var(--error-light)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-                <AlertTriangle size={24} color="var(--error)" />
-              </div>
-              <h3 style={{ margin: '0 0 8px', fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)' }}>Cancel Subscription?</h3>
-              <p style={{ margin: '0 0 24px', fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                You will lose access to all premium features on <strong>15 June 2026</strong>. Are you sure you want to cancel?
-              </p>
-              <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
-                <button onClick={() => setIsCancelModalOpen(false)} style={{ padding: '10px 20px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>Keep Plan</button>
-                <button onClick={confirmCancel} style={{ padding: '10px 20px', borderRadius: 'var(--radius-sm)', border: 'none', background: 'var(--error)', color: 'white', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>Yes, Cancel</button>
-              </div>
+        <Modal onClose={() => setIsCancelModalOpen(false)}>
+          <div style={{ padding: '28px', textAlign: 'center' }}>
+            <div style={{ width: '48px', height: '48px', background: 'rgba(239,68,68,0.1)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+              <AlertTriangle size={22} color="#DC2626" />
+            </div>
+            <h3 style={{ margin: '0 0 8px', fontSize: '17px', fontWeight: 800, color: 'var(--text-primary)' }}>Cancel Subscription?</h3>
+            <p style={{ margin: '0 0 24px', fontSize: '13.5px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              Your workspace access will continue until the end of the current billing period. After that, the workspace will be paused. <strong>Your data will not be deleted.</strong>
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '10px' }}>
+              <button onClick={() => setIsCancelModalOpen(false)} style={secondaryBtn}>Keep Plan</button>
+              <button onClick={confirmCancel} disabled={cancelLoading} style={{ ...primaryBtn, background: '#DC2626', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {cancelLoading && <Loader2 size={14} className="spin" />} Yes, Cancel
+              </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
-      {/* Switch to Annual Modal */}
-      {isAnnualModalOpen && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          animation: 'fadeIn 0.2s ease'
-        }}>
-          <div style={{
-            background: 'var(--card-bg)', width: '440px', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', overflow: 'hidden', border: '1px solid var(--border)'
-          }}>
-            <div style={{ padding: '24px', textAlign: 'center' }}>
-              <h3 style={{ margin: '0 0 8px', fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)' }}>Switch to Annual Plan</h3>
-              <p style={{ margin: '0 0 24px', fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                By switching to the annual plan, you will be billed <strong>₹2,990 immediately</strong>. Your new billing cycle will cover you for a full year.
-              </p>
-              <div style={{ background: 'var(--success-light)', border: '1px solid var(--success)', borderRadius: 'var(--radius-md)', padding: '12px', marginBottom: '24px', color: 'var(--success)', fontWeight: 600, fontSize: '14px' }}>
-                You will save ₹598/year!
+      {/* Switch Billing Cycle */}
+      {switchTo && (
+        <Modal onClose={() => setSwitchTo(null)}>
+          <div style={{ padding: '28px', textAlign: 'center' }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: '17px', fontWeight: 800, color: 'var(--text-primary)' }}>
+              Switch to {switchTo === 'annual' ? 'Annual' : 'Monthly'} Plan
+            </h3>
+            <p style={{ margin: '0 0 20px', fontSize: '13.5px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              {switchTo === 'annual'
+                ? <>Switch to <strong>₹2,990/year</strong> — save ₹598 vs monthly. Your next charge will be the annual rate.</>
+                : <>Switch to <strong>₹299/month</strong>. You will lose your annual discount from the next billing cycle.</>}
+            </p>
+            {switchTo === 'annual' && (
+              <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '8px', padding: '10px', marginBottom: '20px', color: '#065F46', fontSize: '13px', fontWeight: 600 }}>
+                You save ₹598 / year
               </div>
-              <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
-                <button onClick={() => setIsAnnualModalOpen(false)} style={{ padding: '10px 20px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
-                <button onClick={confirmAnnual} style={{ padding: '10px 20px', borderRadius: 'var(--radius-sm)', border: 'none', background: 'var(--accent-dark)', color: 'white', fontSize: '14px', fontWeight: 600, cursor: 'pointer', boxShadow: 'var(--shadow-sm)' }}>Confirm & Pay ₹2,990</button>
-              </div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '10px' }}>
+              <button onClick={() => setSwitchTo(null)} style={secondaryBtn}>Cancel</button>
+              <button onClick={confirmSwitch} disabled={switchLoading} style={{ ...primaryBtn, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {switchLoading && <Loader2 size={14} className="spin" />} Confirm
+              </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
+      <style>{`
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        .spin { animation: spin 0.8s linear infinite; }
+      `}</style>
     </div>
   );
 }
+
+// ── Sub-components ────────────────────────────────────────────
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
+      <span style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: 500, minWidth: '140px' }}>{label}</span>
+      <span>{children}</span>
+    </div>
+  );
+}
+
+function Modal({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)',
+    }} onClick={onClose}>
+      <div style={{
+        background: 'var(--card-bg)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)',
+        border: '1px solid var(--border)', width: '100%', maxWidth: '420px', overflow: 'hidden',
+      }} onClick={e => e.stopPropagation()}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+const primaryBtn: React.CSSProperties = {
+  padding: '9px 20px', borderRadius: '8px', border: 'none',
+  background: '#1F2937', color: 'white', fontSize: '13.5px', fontWeight: 700, cursor: 'pointer',
+};
+const secondaryBtn: React.CSSProperties = {
+  padding: '9px 20px', borderRadius: '8px',
+  border: '1px solid var(--border)', background: 'transparent',
+  color: 'var(--text-secondary)', fontSize: '13.5px', fontWeight: 600, cursor: 'pointer',
+};

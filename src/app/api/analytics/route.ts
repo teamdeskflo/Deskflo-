@@ -54,11 +54,11 @@ export async function GET() {
         .eq('freelancer_id', freelancerId),
     ]);
 
-    const invoices     = invoicesRes.data || [];
-    const clients      = clientsRes.data || [];
-    const projects     = projectsRes.data || [];
-    const files        = filesRes.data || [];
-    const tasks        = tasksRes.data || [];
+    const invoices: any[] = invoicesRes.data || [];
+    const clients: any[]  = clientsRes.data || [];
+    const projects: any[] = projectsRes.data || [];
+    const files: any[]    = filesRes.data || [];
+    const tasks: any[]    = tasksRes.data || [];
 
     // ── Revenue ─────────────────────────────────────────────
     const totalRevenue   = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.total_amount, 0);

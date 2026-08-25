@@ -52,7 +52,7 @@ export default function Sidebar() {
     <div style={{
       width: desktopOpen ? '220px' : '70px', minHeight: '100vh', background: 'var(--sidebar-bg)',
       display: 'flex', flexDirection: 'column', position: 'relative',
-      transition: 'width 0.2s ease', overflowX: 'hidden'
+      transition: 'width 0.2s ease', overflowX: desktopOpen ? 'hidden' : 'visible'
     }}>
       {/* Header */}
       <div style={{
@@ -163,41 +163,44 @@ export default function Sidebar() {
                   position: 'absolute',
                   left: '100%',
                   top: '0',
-                  marginLeft: '12px',
-                  background: '#0B0C0E', // Force dark background for flyout
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius-md)',
-                  padding: '8px',
-                  minWidth: '160px',
-                  boxShadow: 'var(--shadow-lg)',
+                  paddingLeft: '12px',
                   zIndex: 50,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '4px'
                 }}>
-                  {/* Flyout Title */}
-                  <div style={{ padding: '4px 10px 8px', fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.5px', borderBottom: '1px solid rgba(255,255,255,0.05)', marginBottom: '4px' }}>
-                    {label}
+                  <div style={{
+                    background: '#0B0C0E', // Force dark background for flyout
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: '8px',
+                    minWidth: '160px',
+                    boxShadow: 'var(--shadow-lg)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px'
+                  }}>
+                    {/* Flyout Title */}
+                    <div style={{ padding: '4px 10px 8px', fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.5px', borderBottom: '1px solid rgba(255,255,255,0.05)', marginBottom: '4px' }}>
+                      {label}
+                    </div>
+                    {subItems.map(sub => {
+                      const isSubActive = pathname === sub.href;
+                      return (
+                        <Link
+                          key={sub.label}
+                          href={sub.href}
+                          onClick={() => setMobileOpen(false)}
+                          style={{
+                            fontSize: '13px', padding: '8px 12px', borderRadius: 'var(--radius-sm)',
+                            color: isSubActive ? 'white' : 'rgba(255,255,255,0.7)',
+                            background: isSubActive ? 'rgba(255,255,255,0.1)' : 'transparent',
+                            fontWeight: isSubActive ? 500 : 400, textDecoration: 'none',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          {sub.label}
+                        </Link>
+                      );
+                    })}
                   </div>
-                  {subItems.map(sub => {
-                    const isSubActive = pathname === sub.href;
-                    return (
-                      <Link
-                        key={sub.label}
-                        href={sub.href}
-                        onClick={() => setMobileOpen(false)}
-                        style={{
-                          fontSize: '13px', padding: '8px 12px', borderRadius: 'var(--radius-sm)',
-                          color: isSubActive ? 'white' : 'rgba(255,255,255,0.7)',
-                          background: isSubActive ? 'rgba(255,255,255,0.1)' : 'transparent',
-                          fontWeight: isSubActive ? 500 : 400, textDecoration: 'none',
-                          transition: 'all 0.15s ease',
-                        }}
-                      >
-                        {sub.label}
-                      </Link>
-                    );
-                  })}
                 </div>
               )}
             </div>
